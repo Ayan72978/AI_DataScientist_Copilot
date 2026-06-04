@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import joblib
 import matplotlib.pyplot as plt
 
 from utils.preprocess import (
@@ -23,7 +22,7 @@ from utils.visualize import (
 
 from utils.insights import generate_insights
 
-from utils.ml_models import train_models
+from utils.ml_models import train_models, predict_single
 
 
 st.set_page_config(
@@ -55,8 +54,6 @@ if uploaded_file is not None:
 
         st.header("📊 Dataset Overview")
 
-        st.write(df.head())
-
         col1, col2, col3, col4 = st.columns(4)
 
         col1.metric("Rows", df.shape[0])
@@ -64,11 +61,19 @@ if uploaded_file is not None:
         col3.metric("Missing Values", int(df.isnull().sum().sum()))
         col4.metric("Duplicates", int(df.duplicated().sum()))
 
+        st.subheader("Preview")
+        st.dataframe(df.head())
+
         health = dataset_health(df)
 
-        st.subheader("Dataset Health")
-        st.progress(int(health["health_score"]))
-        st.success(f"Health Score: {health['health_score']}%")
+        # SAFE FIX (progress bar)
+        try:
+            health_score = float(health)
+            health_score = max(0, min(100, health_score))
+            st.progress(int(health_score))
+            st.success(f"Health Score: {health_score:.2f}%")
+        except:
+            st.warning("Health score cannot be calculated")
 
     # =========================
     # DATA CLEANING
@@ -87,7 +92,7 @@ if uploaded_file is not None:
             df = handle_missing_values(df.copy(), strategy)
             df = remove_duplicates(df)
 
-            st.success("Data cleaned successfully")
+            st.success("Cleaning Done")
             st.dataframe(df.head())
 
         numeric_cols = df.select_dtypes(include="number").columns
@@ -98,19 +103,8 @@ if uploaded_file is not None:
 
             outliers = detect_outliers_iqr(df, col)
 
-            if outliers is not None:
-
-                Q1 = df[col].quantile(0.25)
-                Q3 = df[col].quantile(0.75)
-                IQR = Q3 - Q1
-
-                lower = Q1 - 1.5 * IQR
-                upper = Q3 + 1.5 * IQR
-
-                outlier_df = df[(df[col] < lower) | (df[col] > upper)]
-
-                st.metric("Outliers Found", len(outlier_df))
-                st.dataframe(outlier_df.head())
+            st.metric("Outliers Found", len(outliers))
+            st.dataframe(outliers.head())
 
     # =========================
     # VISUALIZATIONS
@@ -163,11 +157,11 @@ if uploaded_file is not None:
             st.success(i)
 
     # =========================
-    # MACHINE LEARNING (SAFE)
+    # MACHINE LEARNING
     # =========================
     elif page == "Machine Learning":
 
-        st.header("🤖 AI Machine Learning Engine")
+        st.header("🤖 Machine Learning Engine")
 
         target = st.selectbox("Select Target Column", df.columns)
 
@@ -190,27 +184,46 @@ if uploaded_file is not None:
             X = df_ml.drop(columns=[target])
             y = df_ml[target]
 
-            if X.shape[1] == 0:
-                st.error("No feature columns available")
-                st.stop()
-
             best_model, best_name, results, X_test, y_test = train_models(X, y)
 
             if best_model is None:
                 st.error("Model training failed")
                 st.stop()
 
-            st.subheader("📊 Model Results")
+            st.subheader("Model Results")
 
             for name, acc in results.items():
-                st.write(f"{name}: {acc:.4f}")
+                st.write(f"{name}: {acc}")
 
-            st.success(f"🏆 Best Model: {best_name}")
+            st.success(f"Best Model: {best_name}")
 
-            preds = best_model.predict(X_test)
+            # STORE MODEL SAFELY
+            st.session_state["model"] = best_model
+            st.session_state["columns"] = X.columns
 
-            st.subheader("📉 Sample Predictions")
-            st.write(preds[:10])
+        # =========================
+        # PREDICTION SYSTEM (SAFE)
+        # =========================
+        if "model" in st.session_state:
+
+            st.subheader("🔮 Prediction System")
+
+            model = st.session_state["model"]
+            cols = st.session_state["columns"]
+
+            input_data = []
+
+            for col in cols:
+                val = st.number_input(col, value=0.0)
+                input_data.append(val)
+
+            if st.button("Predict"):
+
+                try:
+                    result = predict_single(model, input_data)
+                    st.success(f"Prediction: {result}")
+                except Exception as e:
+                    st.error(f"Prediction error: {e}")
 
 else:
     st.info("👆 Upload a CSV file to start")

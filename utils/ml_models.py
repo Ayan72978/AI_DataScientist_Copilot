@@ -1,4 +1,5 @@
 import numpy as np
+import joblib
 
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression, LinearRegression
@@ -14,32 +15,28 @@ def train_models(X, y):
         X, y, test_size=0.2, random_state=42
     )
 
-    # AUTO DETECT PROBLEM TYPE
+    # Detect problem type
     if y.nunique() <= 10:
         problem = "classification"
     else:
         problem = "regression"
 
     if problem == "classification":
-
         models = {
             "Logistic Regression": LogisticRegression(max_iter=1000),
             "Random Forest": RandomForestClassifier(),
             "Decision Tree": DecisionTreeClassifier(),
             "SVM": SVC()
         }
-
     else:
-
         models = {
             "Linear Regression": LinearRegression(),
             "Random Forest": RandomForestRegressor(),
             "Decision Tree": DecisionTreeRegressor(),
-            "SVM": SVR()
+            "SVR": SVR()
         }
 
     results = {}
-
     best_model = None
     best_name = None
     best_score = -999
@@ -62,3 +59,17 @@ def train_models(X, y):
             best_name = name
 
     return best_model, best_name, results, X_test, y_test
+
+
+def predict_single(model, input_data):
+    input_array = np.array(input_data).reshape(1, -1)
+    return model.predict(input_array)[0]
+
+
+def save_model(model, filename="best_model.pkl"):
+    joblib.dump(model, filename)
+    return filename
+
+
+def load_model(filename="best_model.pkl"):
+    return joblib.load(filename)
