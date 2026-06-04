@@ -314,5 +314,5 @@ if uploaded_file is not None:
             st.subheader("📄 Classification Report")
             st.text(classification_report(y_test, preds))
 
-else:
+else
     st.info("👆 Please upload a CSV file to start")
