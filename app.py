@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import os
 import joblib
 import matplotlib.pyplot as plt
 
@@ -22,13 +21,10 @@ from utils.visualize import (
     pie_chart
 )
 
-from utils.insights import (
-    generate_insights
-)
+from utils.insights import generate_insights
 
-from utils.ml_models import (
-    train_models
-)
+from utils.ml_models import train_models
+
 
 st.set_page_config(
     page_title="AI Data Scientist Copilot",
@@ -36,26 +32,17 @@ st.set_page_config(
     layout="wide"
 )
 
-st.sidebar.title("🤖 AI Copilot")
-
-page = st.sidebar.radio(
-    "Navigation",
-    [
-        "Overview",
-        "Data Cleaning",
-        "Visualizations",
-        "AI Insights",
-        "Machine Learning"
-    ]
-)
-
 st.title("🤖 AI Data Scientist Copilot")
 st.markdown("### Made by Ayan Behlim")
 
-uploaded_file = st.file_uploader(
-    "Upload CSV File",
-    type=["csv"]
+st.sidebar.title("Navigation")
+
+page = st.sidebar.radio(
+    "Go to",
+    ["Overview", "Data Cleaning", "Visualizations", "AI Insights", "Machine Learning"]
 )
+
+uploaded_file = st.file_uploader("Upload CSV File", type=["csv"])
 
 if uploaded_file is not None:
 
@@ -68,6 +55,8 @@ if uploaded_file is not None:
 
         st.header("📊 Dataset Overview")
 
+        st.write(df.head())
+
         col1, col2, col3, col4 = st.columns(4)
 
         col1.metric("Rows", df.shape[0])
@@ -75,20 +64,11 @@ if uploaded_file is not None:
         col3.metric("Missing Values", int(df.isnull().sum().sum()))
         col4.metric("Duplicates", int(df.duplicated().sum()))
 
-        st.subheader("Dataset Preview")
-        st.dataframe(df.head())
-
-        st.subheader("Data Types")
-        st.dataframe(pd.DataFrame(df.dtypes, columns=["Type"]))
-
-        st.subheader("Statistical Summary")
-        st.dataframe(df.describe(include="all"))
-
         health = dataset_health(df)
 
         st.subheader("Dataset Health")
-        st.progress(int(health))
-        st.success(f"Health Score: {health:.2f}%")
+        st.progress(int(health["health_score"]))
+        st.success(f"Health Score: {health['health_score']}%")
 
     # =========================
     # DATA CLEANING
@@ -102,28 +82,35 @@ if uploaded_file is not None:
             ["Mean", "Median", "Mode", "Drop Rows"]
         )
 
-        if st.button("Apply Missing Value Strategy"):
-            cleaned_df = handle_missing_values(df.copy(), strategy)
-            st.success("Strategy Applied Successfully")
-            st.dataframe(cleaned_df.head())
+        if st.button("Apply Cleaning"):
 
-        keep_option = st.selectbox("Duplicate Handling", ["first", "last"])
+            df = handle_missing_values(df.copy(), strategy)
+            df = remove_duplicates(df)
 
-        if st.button("Remove Duplicates"):
-            cleaned_df = remove_duplicates(df.copy(), keep_option)
-            st.success("Duplicates Removed")
-            st.dataframe(cleaned_df.head())
+            st.success("Data cleaned successfully")
+            st.dataframe(df.head())
 
         numeric_cols = df.select_dtypes(include="number").columns
 
         if len(numeric_cols) > 0:
 
-            selected_col = st.selectbox("Outlier Detection Column", numeric_cols)
+            col = st.selectbox("Outlier Column", numeric_cols)
 
-            outliers = detect_outliers_iqr(df, selected_col)
+            outliers = detect_outliers_iqr(df, col)
 
-            st.metric("Outliers Found", len(outliers))
-            st.dataframe(outliers.head())
+            if outliers is not None:
+
+                Q1 = df[col].quantile(0.25)
+                Q3 = df[col].quantile(0.75)
+                IQR = Q3 - Q1
+
+                lower = Q1 - 1.5 * IQR
+                upper = Q3 + 1.5 * IQR
+
+                outlier_df = df[(df[col] < lower) | (df[col] > upper)]
+
+                st.metric("Outliers Found", len(outlier_df))
+                st.dataframe(outlier_df.head())
 
     # =========================
     # VISUALIZATIONS
@@ -136,42 +123,32 @@ if uploaded_file is not None:
 
         if len(numeric_cols) > 0:
 
-            selected_col = st.selectbox("Numeric Column", numeric_cols)
+            col = st.selectbox("Numeric Column", numeric_cols)
 
-            st.subheader("Histogram")
-            histogram(df, selected_col)
-
-            st.subheader("Box Plot")
-            boxplot(df, selected_col)
+            histogram(df, col)
+            boxplot(df, col)
 
         if len(numeric_cols) >= 2:
 
-            x_col = st.selectbox("X Axis", numeric_cols, key="x_axis")
-            y_col = st.selectbox("Y Axis", numeric_cols, key="y_axis")
+            x = st.selectbox("X Axis", numeric_cols, key="x")
+            y = st.selectbox("Y Axis", numeric_cols, key="y")
 
-            st.subheader("Scatter Plot")
-            scatter(df, x_col, y_col)
+            scatter(df, x, y)
 
-        st.subheader("Correlation Heatmap")
         correlation_heatmap(df)
-
-        st.subheader("Missing Value Heatmap")
         missing_heatmap(df)
 
-        if st.button("Generate Pair Plot"):
+        if st.button("Pair Plot"):
             pair_plot(df)
 
-        categorical_cols = df.select_dtypes(include="object").columns
+        cat_cols = df.select_dtypes(include="object").columns
 
-        if len(categorical_cols) > 0:
+        if len(cat_cols) > 0:
 
-            cat_col = st.selectbox("Categorical Column", categorical_cols)
+            cat = st.selectbox("Categorical Column", cat_cols)
 
-            st.subheader("Count Plot")
-            count_plot(df, cat_col)
-
-            st.subheader("Pie Chart")
-            pie_chart(df, cat_col)
+            count_plot(df, cat)
+            pie_chart(df, cat)
 
     # =========================
     # AI INSIGHTS
@@ -182,137 +159,58 @@ if uploaded_file is not None:
 
         insights = generate_insights(df)
 
-        for insight in insights:
-            st.success(insight)
+        for i in insights:
+            st.success(i)
 
     # =========================
-    # MACHINE LEARNING (FULL UPGRADED)
+    # MACHINE LEARNING (SAFE)
     # =========================
     elif page == "Machine Learning":
 
-        st.header("🤖 Machine Learning")
+        st.header("🤖 AI Machine Learning Engine")
 
-        target_column = st.selectbox("Select Target Column", df.columns)
-
-        model_choice = st.selectbox(
-            "🧠 Select Model",
-            [
-                "Auto (All Models)",
-                "Logistic Regression",
-                "Random Forest",
-                "Decision Tree",
-                "SVM"
-            ]
-        )
+        target = st.selectbox("Select Target Column", df.columns)
 
         if st.button("🚀 Train Models"):
 
-            df_ml = df.copy()
-            df_ml = df_ml.dropna()
+            df_ml = df.copy().dropna()
 
-            # Encode categorical columns
+            if df_ml.shape[0] < 10:
+                st.error("Not enough data after cleaning")
+                st.stop()
+
             for col in df_ml.columns:
                 if df_ml[col].dtype == "object":
                     df_ml[col] = pd.factorize(df_ml[col])[0]
 
-            X = df_ml.drop(target_column, axis=1)
-            y = df_ml[target_column]
+            if target not in df_ml.columns:
+                st.error("Target column issue")
+                st.stop()
 
-            from sklearn.model_selection import train_test_split
-            from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
-            from sklearn.linear_model import LogisticRegression
-            from sklearn.ensemble import RandomForestClassifier
-            from sklearn.tree import DecisionTreeClassifier
-            from sklearn.svm import SVC
+            X = df_ml.drop(columns=[target])
+            y = df_ml[target]
 
-            X_train, X_test, y_train, y_test = train_test_split(
-                X, y, test_size=0.2, random_state=42
-            )
+            if X.shape[1] == 0:
+                st.error("No feature columns available")
+                st.stop()
 
-            models = {
-                "Logistic Regression": LogisticRegression(max_iter=1000),
-                "Random Forest": RandomForestClassifier(),
-                "Decision Tree": DecisionTreeClassifier(),
-                "SVM": SVC()
-            }
+            best_model, best_name, results, X_test, y_test = train_models(X, y)
 
-            results = {}
-            trained_models = {}
+            if best_model is None:
+                st.error("Model training failed")
+                st.stop()
 
             st.subheader("📊 Model Results")
 
-            if model_choice == "Auto (All Models)":
+            for name, acc in results.items():
+                st.write(f"{name}: {acc:.4f}")
 
-                for name, model in models.items():
+            st.success(f"🏆 Best Model: {best_name}")
 
-                    model.fit(X_train, y_train)
-                    preds = model.predict(X_test)
-
-                    acc = accuracy_score(y_test, preds)
-
-                    results[name] = acc
-                    trained_models[name] = model
-
-                    st.success(f"{name}: {acc:.4f}")
-
-                best_model_name = max(results, key=results.get)
-                best_model = trained_models[best_model_name]
-
-            else:
-
-                model = models[model_choice]
-
-                model.fit(X_train, y_train)
-                preds = model.predict(X_test)
-
-                acc = accuracy_score(y_test, preds)
-
-                results[model_choice] = acc
-                best_model = model
-                best_model_name = model_choice
-
-                st.success(f"{model_choice}: {acc:.4f}")
-
-            # BEST MODEL
-            st.subheader("🏆 Best Model")
-            st.info(f"{best_model_name} ({max(results.values()):.4f})")
-
-            # SAVE MODEL
-            joblib.dump(best_model, "best_model.pkl")
-
-            with open("best_model.pkl", "rb") as f:
-                st.download_button(
-                    "📥 Download Model",
-                    f,
-                    file_name="best_model.pkl",
-                    mime="application/octet-stream"
-                )
-
-            # CONFUSION MATRIX
             preds = best_model.predict(X_test)
-            cm = confusion_matrix(y_test, preds)
 
-            st.subheader("📊 Confusion Matrix")
+            st.subheader("📉 Sample Predictions")
+            st.write(preds[:10])
 
-            fig, ax = plt.subplots()
-            ax.imshow(cm, cmap="Blues")
-            st.pyplot(fig)
-
-            # FEATURE IMPORTANCE
-            if hasattr(best_model, "feature_importances_"):
-
-                st.subheader("📌 Feature Importance")
-
-                importances = best_model.feature_importances_
-                features = X.columns
-
-                fig, ax = plt.subplots()
-                ax.barh(features, importances)
-                st.pyplot(fig)
-
-            # REPORT
-            st.subheader("📄 Classification Report")
-            st.text(classification_report(y_test, preds))
-
-else
-    st.info("👆 Please upload a CSV file to start")
+else:
+    st.info("👆 Upload a CSV file to start")
