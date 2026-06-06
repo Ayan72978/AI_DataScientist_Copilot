@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+import joblib
 
 from utils.preprocess import (
     dataset_health,
@@ -22,8 +23,12 @@ from utils.visualize import (
 
 from utils.insights import generate_insights
 
-from utils.ml_models import train_models, predict_single
-
+from utils.ml_models import (
+    train_models,
+    predict_single,
+    save_model,
+    get_feature_importance
+)
 
 st.set_page_config(
     page_title="AI Data Scientist Copilot",
@@ -64,9 +69,25 @@ if uploaded_file is not None:
         st.subheader("Preview")
         st.dataframe(df.head())
 
+        st.download_button(
+            "📥 Download Dataset",
+            df.to_csv(index=False),
+            "dataset.csv",
+            "text/csv"
+        )
+
+        st.subheader("Dataset Information")
+
+        info = pd.DataFrame({
+            "Column": df.columns,
+            "Type": [str(df[col].dtype) for col in df.columns],
+            "Missing": [df[col].isnull().sum() for col in df.columns]
+        })
+
+        st.dataframe(info)
+
         health = dataset_health(df)
 
-        # SAFE FIX (progress bar)
         try:
             health_score = float(health)
             health_score = max(0, min(100, health_score))
@@ -113,36 +134,57 @@ if uploaded_file is not None:
 
         st.header("📈 Visualizations")
 
-        numeric_cols = df.select_dtypes(include="number").columns
+        graph_type = st.selectbox(
+            "Select Graph",
+            [
+                "Histogram",
+                "Box Plot",
+                "Scatter Plot",
+                "Correlation Heatmap",
+                "Missing Values Heatmap",
+                "Pair Plot",
+                "Count Plot",
+                "Pie Chart"
+            ]
+        )
 
-        if len(numeric_cols) > 0:
+        numeric_cols = list(df.select_dtypes(include="number").columns)
+        cat_cols = list(df.select_dtypes(include=["object", "category"]).columns)
 
-            col = st.selectbox("Numeric Column", numeric_cols)
+        if graph_type == "Histogram":
+            if numeric_cols:
+                col = st.selectbox("Select Column", numeric_cols)
+                histogram(df, col)
 
-            histogram(df, col)
-            boxplot(df, col)
+        elif graph_type == "Box Plot":
+            if numeric_cols:
+                col = st.selectbox("Select Column", numeric_cols)
+                boxplot(df, col)
 
-        if len(numeric_cols) >= 2:
+        elif graph_type == "Scatter Plot":
+            if len(numeric_cols) >= 2:
+                x = st.selectbox("X Axis", numeric_cols)
+                y = st.selectbox("Y Axis", numeric_cols)
+                scatter(df, x, y)
 
-            x = st.selectbox("X Axis", numeric_cols, key="x")
-            y = st.selectbox("Y Axis", numeric_cols, key="y")
+        elif graph_type == "Correlation Heatmap":
+            correlation_heatmap(df)
 
-            scatter(df, x, y)
+        elif graph_type == "Missing Values Heatmap":
+            missing_heatmap(df)
 
-        correlation_heatmap(df)
-        missing_heatmap(df)
-
-        if st.button("Pair Plot"):
+        elif graph_type == "Pair Plot":
             pair_plot(df)
 
-        cat_cols = df.select_dtypes(include="object").columns
+        elif graph_type == "Count Plot":
+            if cat_cols:
+                col = st.selectbox("Select Column", cat_cols)
+                count_plot(df, col)
 
-        if len(cat_cols) > 0:
-
-            cat = st.selectbox("Categorical Column", cat_cols)
-
-            count_plot(df, cat)
-            pie_chart(df, cat)
+        elif graph_type == "Pie Chart":
+            if cat_cols:
+                col = st.selectbox("Select Column", cat_cols)
+                pie_chart(df, col)
 
     # =========================
     # AI INSIGHTS
@@ -165,7 +207,7 @@ if uploaded_file is not None:
 
         target = st.selectbox("Select Target Column", df.columns)
 
-        if st.button("🚀 Train Models"):
+        if st.button("Train Models"):
 
             df_ml = df.copy().dropna()
 
@@ -176,10 +218,6 @@ if uploaded_file is not None:
             for col in df_ml.columns:
                 if df_ml[col].dtype == "object":
                     df_ml[col] = pd.factorize(df_ml[col])[0]
-
-            if target not in df_ml.columns:
-                st.error("Target column issue")
-                st.stop()
 
             X = df_ml.drop(columns=[target])
             y = df_ml[target]
@@ -197,12 +235,29 @@ if uploaded_file is not None:
 
             st.success(f"Best Model: {best_name}")
 
-            # STORE MODEL SAFELY
+            # Save model
+            joblib.dump(best_model, "best_model.pkl")
+
+            st.download_button(
+                "📥 Download Model",
+                open("best_model.pkl", "rb"),
+                file_name="best_model.pkl"
+            )
+
+            # Feature importance
+            try:
+                importance = get_feature_importance(best_model, X.columns)
+                if importance is not None:
+                    st.subheader("📊 Feature Importance")
+                    st.dataframe(importance)
+            except:
+                pass
+
             st.session_state["model"] = best_model
             st.session_state["columns"] = X.columns
 
         # =========================
-        # PREDICTION SYSTEM (SAFE)
+        # PREDICTION
         # =========================
         if "model" in st.session_state:
 
