@@ -1,7 +1,13 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
 import joblib
+
+from utils.copilot import (
+    dataset_summary,
+    suggest_target_column,
+    suggest_model,
+    next_action_plan
+)
 
 from utils.preprocess import (
     dataset_health,
@@ -18,7 +24,11 @@ from utils.visualize import (
     missing_heatmap,
     pair_plot,
     count_plot,
-    pie_chart
+    pie_chart,
+    line_chart,
+    distribution_plot,
+    violin_plot,
+    bar_plot
 )
 
 from utils.insights import generate_insights
@@ -26,7 +36,6 @@ from utils.insights import generate_insights
 from utils.ml_models import (
     train_models,
     predict_single,
-    save_model,
     get_feature_importance
 )
 
@@ -43,242 +52,655 @@ st.sidebar.title("Navigation")
 
 page = st.sidebar.radio(
     "Go to",
-    ["Overview", "Data Cleaning", "Visualizations", "AI Insights", "Machine Learning"]
+    [
+        "Overview",
+        "Data Cleaning",
+        "Visualizations",
+        "AI Insights",
+        "Machine Learning",
+        "Copilot"
+    ]
 )
 
-uploaded_file = st.file_uploader("Upload CSV File", type=["csv"])
+uploaded_file = st.file_uploader(
+    "Upload CSV File",
+    type=["csv"]
+)
 
 if uploaded_file is not None:
+    st.session_state["df"] = pd.read_csv(uploaded_file)
 
-    df = pd.read_csv(uploaded_file)
+df = st.session_state.get("df", None)
+
+if df is None:
+    st.info("👆 Upload a CSV file to start")
+    st.stop()
+    # =========================
+# OVERVIEW
+# =========================
+
+if page == "Overview":
+
+    st.header("📊 Dataset Overview")
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    col1.metric(
+        "Rows",
+        df.shape[0]
+    )
+
+    col2.metric(
+        "Columns",
+        df.shape[1]
+    )
+
+    col3.metric(
+        "Missing Values",
+        int(df.isnull().sum().sum())
+    )
+
+    col4.metric(
+        "Duplicates",
+        int(df.duplicated().sum())
+    )
+
+    st.divider()
+
+    st.subheader("Dataset Preview")
+
+    st.dataframe(
+        df.head(),
+        use_container_width=True
+    )
+
+    st.divider()
+
+    st.subheader("Dataset Information")
+
+    info = pd.DataFrame({
+        "Column": df.columns,
+        "Data Type": [
+            str(df[col].dtype)
+            for col in df.columns
+        ],
+        "Missing Values": [
+            df[col].isnull().sum()
+            for col in df.columns
+        ]
+    })
+
+    st.dataframe(
+        info,
+        use_container_width=True
+    )
+
+    st.divider()
+
+    health = dataset_health(df)
+
+    st.subheader("Dataset Health")
+
+    st.metric(
+        "Health Score",
+        f"{health['health_score']}%"
+    )
+
+    st.progress(
+        int(health["health_score"])
+    )
 
     # =========================
-    # OVERVIEW
-    # =========================
-    if page == "Overview":
+# DATA CLEANING
+# =========================
 
-        st.header("📊 Dataset Overview")
+elif page == "Data Cleaning":
 
-        col1, col2, col3, col4 = st.columns(4)
+    st.header("🧹 Data Cleaning")
 
-        col1.metric("Rows", df.shape[0])
-        col2.metric("Columns", df.shape[1])
-        col3.metric("Missing Values", int(df.isnull().sum().sum()))
-        col4.metric("Duplicates", int(df.duplicated().sum()))
+    strategy = st.selectbox(
+        "Missing Value Strategy",
+        [
+            "Mean",
+            "Median",
+            "Mode",
+            "Drop Rows"
+        ]
+    )
 
-        st.subheader("Preview")
-        st.dataframe(df.head())
+    if st.button("Apply Cleaning"):
 
-        st.download_button(
-            "📥 Download Dataset",
-            df.to_csv(index=False),
-            "dataset.csv",
-            "text/csv"
+        df_cleaned = handle_missing_values(
+            df.copy(),
+            strategy
         )
 
-        st.subheader("Dataset Information")
-
-        info = pd.DataFrame({
-            "Column": df.columns,
-            "Type": [str(df[col].dtype) for col in df.columns],
-            "Missing": [df[col].isnull().sum() for col in df.columns]
-        })
-
-        st.dataframe(info)
-
-        health = dataset_health(df)
-
-        try:
-            health_score = float(health)
-            health_score = max(0, min(100, health_score))
-            st.progress(int(health_score))
-            st.success(f"Health Score: {health_score:.2f}%")
-        except:
-            st.warning("Health score cannot be calculated")
-
-    # =========================
-    # DATA CLEANING
-    # =========================
-    elif page == "Data Cleaning":
-
-        st.header("🧹 Data Cleaning")
-
-        strategy = st.selectbox(
-            "Missing Value Strategy",
-            ["Mean", "Median", "Mode", "Drop Rows"]
+        df_cleaned = remove_duplicates(
+            df_cleaned
         )
 
-        if st.button("Apply Cleaning"):
+        st.session_state["df"] = df_cleaned
 
-            df = handle_missing_values(df.copy(), strategy)
-            df = remove_duplicates(df)
+        df = df_cleaned
 
-            st.success("Cleaning Done")
-            st.dataframe(df.head())
+        st.success(
+            "Cleaning completed successfully"
+        )
 
-        numeric_cols = df.select_dtypes(include="number").columns
+        st.dataframe(
+            df.head(),
+            use_container_width=True
+        )
 
-        if len(numeric_cols) > 0:
+    st.divider()
 
-            col = st.selectbox("Outlier Column", numeric_cols)
+    numeric_cols = df.select_dtypes(
+        include="number"
+    ).columns
 
-            outliers = detect_outliers_iqr(df, col)
+    if len(numeric_cols) > 0:
 
-            st.metric("Outliers Found", len(outliers))
-            st.dataframe(outliers.head())
+        st.subheader(
+            "📊 Outlier Detection"
+        )
 
-    # =========================
-    # VISUALIZATIONS
-    # =========================
-    elif page == "Visualizations":
+        selected_col = st.selectbox(
+            "Select Numeric Column",
+            numeric_cols
+        )
 
-        st.header("📈 Visualizations")
+        outliers = detect_outliers_iqr(
+            df,
+            selected_col
+        )
 
-        graph_type = st.selectbox(
-            "Select Graph",
-            [
-                "Histogram",
-                "Box Plot",
-                "Scatter Plot",
-                "Correlation Heatmap",
-                "Missing Values Heatmap",
-                "Pair Plot",
-                "Count Plot",
-                "Pie Chart"
+        st.metric(
+            "Outliers Found",
+            len(outliers)
+        )
+
+        st.dataframe(
+            outliers.head(),
+            use_container_width=True
+        )
+
+# =========================
+# VISUALIZATIONS
+# =========================
+
+elif page == "Visualizations":
+
+    st.header("📈 Advanced Visualizations")
+
+    graph_type = st.selectbox(
+        "Select Visualization",
+        [
+            "Histogram",
+            "Box Plot",
+            "Scatter Plot",
+            "Correlation Heatmap",
+            "Missing Values Heatmap",
+            "Pair Plot",
+            "Count Plot",
+            "Pie Chart",
+            "Line Chart",
+            "Distribution Plot",
+            "Violin Plot",
+            "Bar Plot"
+        ]
+    )
+
+    numeric_cols = list(
+        df.select_dtypes(
+            include="number"
+        ).columns
+    )
+
+    cat_cols = list(
+        df.select_dtypes(
+            include=["object", "category"]
+        ).columns
+    )
+
+    if graph_type == "Histogram" and numeric_cols:
+        col = st.selectbox(
+            "Column",
+            numeric_cols
+        )
+        histogram(df, col)
+
+    elif graph_type == "Box Plot" and numeric_cols:
+        col = st.selectbox(
+            "Column",
+            numeric_cols
+        )
+        boxplot(df, col)
+
+    elif graph_type == "Scatter Plot" and len(numeric_cols) >= 2:
+        x = st.selectbox(
+            "X Axis",
+            numeric_cols
+        )
+        y = st.selectbox(
+            "Y Axis",
+            numeric_cols
+        )
+        scatter(df, x, y)
+
+    elif graph_type == "Correlation Heatmap":
+        correlation_heatmap(df)
+
+    elif graph_type == "Missing Values Heatmap":
+        missing_heatmap(df)
+
+    elif graph_type == "Pair Plot":
+        pair_plot(df)
+
+    elif graph_type == "Count Plot" and cat_cols:
+        col = st.selectbox(
+            "Column",
+            cat_cols
+        )
+        count_plot(df, col)
+
+    elif graph_type == "Pie Chart" and cat_cols:
+        col = st.selectbox(
+            "Column",
+            cat_cols
+        )
+        pie_chart(df, col)
+
+    elif graph_type == "Line Chart" and numeric_cols:
+        col = st.selectbox(
+            "Column",
+            numeric_cols
+        )
+        line_chart(df, col)
+
+    elif graph_type == "Distribution Plot" and numeric_cols:
+        col = st.selectbox(
+            "Column",
+            numeric_cols
+        )
+        distribution_plot(df, col)
+
+    elif graph_type == "Violin Plot" and numeric_cols:
+        col = st.selectbox(
+            "Column",
+            numeric_cols
+        )
+        violin_plot(df, col)
+
+    elif graph_type == "Bar Plot" and cat_cols:
+        col = st.selectbox(
+            "Column",
+            cat_cols
+        )
+        bar_plot(df, col)
+
+# =========================
+# AI INSIGHTS
+# =========================
+
+elif page == "AI Insights":
+
+    st.header("🧠 AI Insights")
+
+    insights = generate_insights(df)
+
+    for insight in insights:
+        st.success(
+            str(insight)
+        )
+
+    st.divider()
+
+    st.subheader(
+        "Dataset Summary"
+    )
+
+    st.write(
+        f"Rows: {df.shape[0]}"
+    )
+
+    st.write(
+        f"Columns: {df.shape[1]}"
+    )
+
+    st.write(
+        f"Missing Values: {df.isnull().sum().sum()}"
+    )
+
+    st.write(
+        f"Duplicate Rows: {df.duplicated().sum()}"
+    )
+
+# =========================
+# MACHINE LEARNING
+# =========================
+
+elif page == "Machine Learning":
+
+    st.header("🤖 Machine Learning Engine")
+
+    target = st.selectbox(
+        "Select Target Column",
+        df.columns
+    )
+
+    if st.button("Train Models"):
+
+        df_ml = df.copy().dropna()
+
+        if len(df_ml) < 10:
+            st.error("Not enough data for training")
+            st.stop()
+
+        for col in df_ml.columns:
+
+            if df_ml[col].dtype == "object":
+
+                df_ml[col] = pd.factorize(
+                    df_ml[col]
+                )[0]
+
+        X = df_ml.drop(
+            columns=[target]
+        )
+
+        y = df_ml[target]
+
+        (
+            best_model,
+            best_name,
+            results,
+            X_test,
+            y_test,
+            problem
+        ) = train_models(X, y)
+
+        st.subheader(
+            "🏆 Model Results"
+        )
+
+        result_df = pd.DataFrame(
+            list(results.items()),
+            columns=[
+                "Model",
+                "Score"
             ]
         )
 
-        numeric_cols = list(df.select_dtypes(include="number").columns)
-        cat_cols = list(df.select_dtypes(include=["object", "category"]).columns)
+        st.dataframe(
+            result_df,
+            use_container_width=True
+        )
 
-        if graph_type == "Histogram":
-            if numeric_cols:
-                col = st.selectbox("Select Column", numeric_cols)
-                histogram(df, col)
+        st.success(
+            f"Best Model: {best_name}"
+        )
 
-        elif graph_type == "Box Plot":
-            if numeric_cols:
-                col = st.selectbox("Select Column", numeric_cols)
-                boxplot(df, col)
+        st.info(
+            f"Problem Type: {problem}"
+        )
 
-        elif graph_type == "Scatter Plot":
-            if len(numeric_cols) >= 2:
-                x = st.selectbox("X Axis", numeric_cols)
-                y = st.selectbox("Y Axis", numeric_cols)
-                scatter(df, x, y)
+        st.session_state["model"] = best_model
+        st.session_state["columns"] = X.columns
 
-        elif graph_type == "Correlation Heatmap":
-            correlation_heatmap(df)
+        joblib.dump(
+            best_model,
+            "best_model.pkl"
+        )
 
-        elif graph_type == "Missing Values Heatmap":
-            missing_heatmap(df)
-
-        elif graph_type == "Pair Plot":
-            pair_plot(df)
-
-        elif graph_type == "Count Plot":
-            if cat_cols:
-                col = st.selectbox("Select Column", cat_cols)
-                count_plot(df, col)
-
-        elif graph_type == "Pie Chart":
-            if cat_cols:
-                col = st.selectbox("Select Column", cat_cols)
-                pie_chart(df, col)
-
-    # =========================
-    # AI INSIGHTS
-    # =========================
-    elif page == "AI Insights":
-
-        st.header("🧠 AI Insights")
-
-        insights = generate_insights(df)
-
-        for i in insights:
-            st.success(i)
-
-    # =========================
-    # MACHINE LEARNING
-    # =========================
-    elif page == "Machine Learning":
-
-        st.header("🤖 Machine Learning Engine")
-
-        target = st.selectbox("Select Target Column", df.columns)
-
-        if st.button("Train Models"):
-
-            df_ml = df.copy().dropna()
-
-            if df_ml.shape[0] < 10:
-                st.error("Not enough data after cleaning")
-                st.stop()
-
-            for col in df_ml.columns:
-                if df_ml[col].dtype == "object":
-                    df_ml[col] = pd.factorize(df_ml[col])[0]
-
-            X = df_ml.drop(columns=[target])
-            y = df_ml[target]
-
-            best_model, best_name, results, X_test, y_test = train_models(X, y)
-
-            if best_model is None:
-                st.error("Model training failed")
-                st.stop()
-
-            st.subheader("Model Results")
-
-            for name, acc in results.items():
-                st.write(f"{name}: {acc}")
-
-            st.success(f"Best Model: {best_name}")
-
-            # Save model
-            joblib.dump(best_model, "best_model.pkl")
+        with open(
+            "best_model.pkl",
+            "rb"
+        ) as file:
 
             st.download_button(
                 "📥 Download Model",
-                open("best_model.pkl", "rb"),
+                file,
                 file_name="best_model.pkl"
             )
 
-            # Feature importance
-            try:
-                importance = get_feature_importance(best_model, X.columns)
-                if importance is not None:
-                    st.subheader("📊 Feature Importance")
-                    st.dataframe(importance)
-            except:
-                pass
+        try:
 
-            st.session_state["model"] = best_model
-            st.session_state["columns"] = X.columns
+            importance = get_feature_importance(
+                best_model,
+                X.columns
+            )
 
-        # =========================
-        # PREDICTION
-        # =========================
-        if "model" in st.session_state:
+            if importance:
 
-            st.subheader("🔮 Prediction System")
+                st.subheader(
+                    "📊 Feature Importance"
+                )
 
-            model = st.session_state["model"]
-            cols = st.session_state["columns"]
+                importance_df = pd.DataFrame(
+                    importance,
+                    columns=[
+                        "Feature",
+                        "Importance"
+                    ]
+                )
 
-            input_data = []
+                st.dataframe(
+                    importance_df,
+                    use_container_width=True
+                )
 
-            for col in cols:
-                val = st.number_input(col, value=0.0)
-                input_data.append(val)
+        except:
+            pass
 
-            if st.button("Predict"):
+    if "model" in st.session_state:
 
-                try:
-                    result = predict_single(model, input_data)
-                    st.success(f"Prediction: {result}")
-                except Exception as e:
-                    st.error(f"Prediction error: {e}")
+        st.divider()
 
-else:
-    st.info("👆 Upload a CSV file to start")
+        st.subheader(
+            "🔮 Prediction System"
+        )
+
+        model = st.session_state["model"]
+
+        columns = st.session_state["columns"]
+
+        input_data = []
+
+        for col in columns:
+
+            value = st.number_input(
+                col,
+                value=0.0
+            )
+
+            input_data.append(
+                value
+            )
+
+        if st.button(
+            "Predict"
+        ):
+
+            prediction = predict_single(
+                model,
+                input_data
+            )
+
+            st.success(
+                f"Prediction: {prediction}"
+            )
+
+
+# =========================
+# COPILOT
+# =========================
+
+elif page == "Copilot":
+
+    st.header("🧠 AI Copilot Dashboard")
+
+    summary = dataset_summary(df)
+
+    target = suggest_target_column(df)
+
+    model = suggest_model(
+        df,
+        target
+    )
+
+    insights = generate_insights(df)
+
+    actions = next_action_plan(
+        df,
+        target
+    )
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric(
+        "Rows",
+        summary["rows"]
+    )
+
+    col2.metric(
+        "Columns",
+        summary["columns"]
+    )
+
+    col3.metric(
+        "Missing",
+        summary["missing_values"]
+    )
+
+    st.divider()
+
+    st.subheader(
+        "📂 Dataset Structure"
+    )
+
+    st.write(
+        "Numeric Columns"
+    )
+
+    st.write(
+        summary["numeric_columns"]
+    )
+
+    st.write(
+        "Categorical Columns"
+    )
+
+    st.write(
+        summary["categorical_columns"]
+    )
+
+    st.divider()
+
+    st.subheader(
+        "🤖 Recommendations"
+    )
+
+    st.success(
+        f"Suggested Target: {target}"
+    )
+
+    st.info(
+        f"Suggested Model: {model}"
+    )
+
+    st.divider()
+
+    st.subheader(
+        "💡 Smart Insights"
+    )
+
+    for insight in insights:
+
+        st.success(
+            insight
+        )
+
+    st.divider()
+
+    st.subheader(
+        "🚀 Action Plan"
+    )
+
+    for action in actions:
+
+        st.warning(
+            action
+        )
+
+    st.divider()
+
+    st.subheader(
+        "💬 Ask Your Dataset"
+    )
+
+    if "chat_history" not in st.session_state:
+
+        st.session_state.chat_history = []
+
+    question = st.text_input(
+        "Ask a question"
+    )
+
+    if question:
+
+        q = question.lower()
+
+        answer = ""
+
+        if "row" in q:
+            answer = f"Dataset contains {df.shape[0]} rows"
+
+        elif "column" in q:
+            answer = f"Dataset contains {df.shape[1]} columns"
+
+        elif "missing" in q:
+            answer = f"Missing values: {df.isnull().sum().sum()}"
+
+        elif "duplicate" in q:
+            answer = f"Duplicate rows: {df.duplicated().sum()}"
+
+        elif "target" in q:
+            answer = f"Suggested target: {target}"
+
+        elif "model" in q:
+            answer = f"Suggested model: {model}"
+
+        elif "summary" in q:
+            answer = str(
+                df.describe(
+                    include="all"
+                )
+            )
+
+        else:
+            answer = (
+                "Try asking about rows, columns, missing values, target column or model recommendation."
+            )
+
+        st.session_state.chat_history.append(
+            (
+                question,
+                answer
+            )
+        )
+
+    st.markdown(
+        "### Chat History"
+    )
+
+    for q, a in reversed(
+        st.session_state.chat_history[-10:]
+    ):
+
+        st.markdown(
+            f"**You:** {q}"
+        )
+
+        st.success(
+            a
+        )

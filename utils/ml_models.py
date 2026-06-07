@@ -1,12 +1,35 @@
 import numpy as np
 import joblib
 
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LogisticRegression, LinearRegression
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
-from sklearn.svm import SVC, SVR
-from sklearn.metrics import accuracy_score, r2_score
+from sklearn.model_selection import (
+    train_test_split,
+    cross_val_score
+)
+
+from sklearn.linear_model import (
+    LogisticRegression,
+    LinearRegression
+)
+
+from sklearn.ensemble import (
+    RandomForestClassifier,
+    RandomForestRegressor
+)
+
+from sklearn.tree import (
+    DecisionTreeClassifier,
+    DecisionTreeRegressor
+)
+
+from sklearn.svm import (
+    SVC,
+    SVR
+)
+
+from sklearn.metrics import (
+    accuracy_score,
+    r2_score
+)
 
 
 def train_models(X, y):
@@ -62,6 +85,23 @@ def train_models(X, y):
 
             results[name] = round(score, 4)
 
+            try:
+
+                cv_score = cross_val_score(
+                    model,
+                    X,
+                    y,
+                    cv=5
+                ).mean()
+
+                results[f"{name} CV"] = round(
+                    cv_score,
+                    4
+                )
+
+            except:
+                pass
+
             if score > best_score:
 
                 best_score = score
@@ -84,37 +124,62 @@ def train_models(X, y):
 
 def predict_single(model, input_data):
 
-    input_array = np.array(input_data).reshape(1, -1)
+    input_array = np.array(
+        input_data
+    ).reshape(1, -1)
 
-    prediction = model.predict(input_array)
+    prediction = model.predict(
+        input_array
+    )
 
     return prediction[0]
 
 
-def save_model(model, filename="best_model.pkl"):
+def save_model(
+    model,
+    filename="best_model.pkl"
+):
 
-    joblib.dump(model, filename)
+    joblib.dump(
+        model,
+        filename
+    )
 
     return filename
 
 
-def load_model(filename="best_model.pkl"):
+def load_model(
+    filename="best_model.pkl"
+):
 
-    model = joblib.load(filename)
+    model = joblib.load(
+        filename
+    )
 
     return model
 
 
-def get_feature_importance(model, feature_names):
+def get_feature_importance(
+    model,
+    feature_names
+):
 
     try:
 
-        if hasattr(model, "feature_importances_"):
+        if hasattr(
+            model,
+            "feature_importances_"
+        ):
 
-            importance = model.feature_importances_
+            importance = (
+                model.feature_importances_
+            )
 
             feature_data = list(
-                zip(feature_names, importance)
+                zip(
+                    feature_names,
+                    importance
+                )
             )
 
             feature_data = sorted(

@@ -1,195 +1,246 @@
 import streamlit as st
-import matplotlib.pyplot as plt
-import seaborn as sns
-
-sns.set_style("whitegrid")
+import pandas as pd
+import plotly.express as px
+import plotly.figure_factory as ff
 
 
 def histogram(df, column):
 
-    fig, ax = plt.subplots(figsize=(8, 4))
-
-    ax.hist(
-        df[column].dropna(),
-        bins=20
+    fig = px.histogram(
+        df,
+        x=column,
+        title=f"Histogram - {column}",
+        nbins=20
     )
 
-    ax.set_title(f"Histogram - {column}")
-    ax.set_xlabel(column)
-    ax.set_ylabel("Frequency")
-
-    st.pyplot(fig)
+    st.plotly_chart(
+        fig,
+        use_container_width=True
+    )
 
 
 def boxplot(df, column):
 
-    fig, ax = plt.subplots(figsize=(8, 4))
-
-    sns.boxplot(
-        y=df[column],
-        ax=ax
+    fig = px.box(
+        df,
+        y=column,
+        title=f"Box Plot - {column}"
     )
 
-    ax.set_title(f"Box Plot - {column}")
-
-    st.pyplot(fig)
+    st.plotly_chart(
+        fig,
+        use_container_width=True
+    )
 
 
 def scatter(df, x_col, y_col):
 
-    fig, ax = plt.subplots(figsize=(8, 4))
-
-    sns.scatterplot(
-        data=df,
+    fig = px.scatter(
+        df,
         x=x_col,
         y=y_col,
-        ax=ax
+        title=f"{x_col} vs {y_col}"
     )
 
-    ax.set_title(f"{x_col} vs {y_col}")
-
-    st.pyplot(fig)
+    st.plotly_chart(
+        fig,
+        use_container_width=True
+    )
 
 
 def correlation_heatmap(df):
 
-    numeric_df = df.select_dtypes(include="number")
-
-    if len(numeric_df.columns) < 2:
-        st.warning("Need at least 2 numeric columns.")
-        return
-
-    fig, ax = plt.subplots(figsize=(10, 6))
-
-    sns.heatmap(
-        numeric_df.corr(),
-        annot=True,
-        cmap="coolwarm",
-        fmt=".2f",
-        ax=ax
+    numeric_df = df.select_dtypes(
+        include="number"
     )
 
-    ax.set_title("Correlation Heatmap")
+    if len(numeric_df.columns) < 2:
+        st.warning(
+            "Need at least 2 numeric columns."
+        )
+        return
 
-    st.pyplot(fig)
+    corr = numeric_df.corr().round(2)
+
+    fig = ff.create_annotated_heatmap(
+        z=corr.values,
+        x=list(corr.columns),
+        y=list(corr.index),
+        annotation_text=corr.values.astype(str),
+        showscale=True
+    )
+
+    fig.update_layout(
+        title="Correlation Heatmap"
+    )
+
+    st.plotly_chart(
+        fig,
+        use_container_width=True
+    )
 
 
 def missing_heatmap(df):
 
-    fig, ax = plt.subplots(figsize=(10, 5))
+    missing_df = pd.DataFrame({
+        "Column": df.columns,
+        "Missing": df.isnull().sum().values
+    })
 
-    sns.heatmap(
-        df.isnull(),
-        cbar=False,
-        cmap="viridis",
-        ax=ax
+    fig = px.bar(
+        missing_df,
+        x="Column",
+        y="Missing",
+        title="Missing Values"
     )
 
-    ax.set_title("Missing Values Heatmap")
-
-    st.pyplot(fig)
+    st.plotly_chart(
+        fig,
+        use_container_width=True
+    )
 
 
 def pair_plot(df):
 
-    numeric_df = df.select_dtypes(include="number")
+    numeric_df = df.select_dtypes(
+        include="number"
+    )
 
     if len(numeric_df.columns) < 2:
-        st.warning("Need at least 2 numeric columns.")
+        st.warning(
+            "Need at least 2 numeric columns."
+        )
         return
 
-    pair = sns.pairplot(numeric_df)
+    fig = px.scatter_matrix(
+        numeric_df
+    )
 
-    st.pyplot(pair.figure)
+    st.plotly_chart(
+        fig,
+        use_container_width=True
+    )
 
 
 def count_plot(df, column):
 
-    fig, ax = plt.subplots(figsize=(8, 4))
-
-    sns.countplot(
-        data=df,
-        x=column,
-        ax=ax
+    counts = (
+        df[column]
+        .value_counts()
+        .reset_index()
     )
 
-    plt.xticks(rotation=45)
+    counts.columns = [
+        column,
+        "Count"
+    ]
 
-    ax.set_title(f"Count Plot - {column}")
+    fig = px.bar(
+        counts,
+        x=column,
+        y="Count",
+        title=f"Count Plot - {column}"
+    )
 
-    st.pyplot(fig)
+    st.plotly_chart(
+        fig,
+        use_container_width=True
+    )
 
 
 def pie_chart(df, column):
 
-    counts = df[column].value_counts().head(10)
-
-    fig, ax = plt.subplots(figsize=(6, 6))
-
-    ax.pie(
-        counts,
-        labels=counts.index,
-        autopct="%1.1f%%"
+    counts = (
+        df[column]
+        .value_counts()
+        .head(10)
+        .reset_index()
     )
 
-    ax.set_title(f"Pie Chart - {column}")
+    counts.columns = [
+        column,
+        "Count"
+    ]
 
-    st.pyplot(fig)
+    fig = px.pie(
+        counts,
+        names=column,
+        values="Count",
+        title=f"Pie Chart - {column}"
+    )
+
+    st.plotly_chart(
+        fig,
+        use_container_width=True
+    )
 
 
 def line_chart(df, column):
 
-    fig, ax = plt.subplots(figsize=(8, 4))
+    fig = px.line(
+        df,
+        y=column,
+        title=f"Line Chart - {column}"
+    )
 
-    ax.plot(df[column].dropna())
-
-    ax.set_title(f"Line Chart - {column}")
-    ax.set_xlabel("Index")
-    ax.set_ylabel(column)
-
-    st.pyplot(fig)
+    st.plotly_chart(
+        fig,
+        use_container_width=True
+    )
 
 
 def distribution_plot(df, column):
 
-    fig, ax = plt.subplots(figsize=(8, 4))
-
-    sns.histplot(
-        df[column].dropna(),
-        kde=True,
-        ax=ax
+    fig = px.histogram(
+        df,
+        x=column,
+        marginal="box",
+        title=f"Distribution Plot - {column}"
     )
 
-    ax.set_title(f"Distribution Plot - {column}")
-
-    st.pyplot(fig)
+    st.plotly_chart(
+        fig,
+        use_container_width=True
+    )
 
 
 def violin_plot(df, column):
 
-    fig, ax = plt.subplots(figsize=(8, 4))
-
-    sns.violinplot(
-        y=df[column],
-        ax=ax
+    fig = px.violin(
+        df,
+        y=column,
+        box=True,
+        title=f"Violin Plot - {column}"
     )
 
-    ax.set_title(f"Violin Plot - {column}")
-
-    st.pyplot(fig)
+    st.plotly_chart(
+        fig,
+        use_container_width=True
+    )
 
 
 def bar_plot(df, column):
 
-    counts = df[column].value_counts().head(10)
-
-    fig, ax = plt.subplots(figsize=(8, 4))
-
-    counts.plot(
-        kind="bar",
-        ax=ax
+    counts = (
+        df[column]
+        .value_counts()
+        .head(10)
+        .reset_index()
     )
 
-    ax.set_title(f"Bar Plot - {column}")
+    counts.columns = [
+        column,
+        "Count"
+    ]
 
-    st.pyplot(fig)
+    fig = px.bar(
+        counts,
+        x=column,
+        y="Count",
+        title=f"Bar Plot - {column}"
+    )
+
+    st.plotly_chart(
+        fig,
+        use_container_width=True
+    )
