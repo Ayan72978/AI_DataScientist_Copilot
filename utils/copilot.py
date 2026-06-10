@@ -202,3 +202,38 @@ def next_action_plan(df, target):
     return actions
 
 
+def data_quality_score(df):
+
+    total_cells = df.shape[0] * df.shape[1]
+
+    if total_cells == 0:
+        return 0
+
+    missing = int(
+        df.isnull().sum().sum()
+    )
+
+    duplicates = int(
+        df.duplicated().sum()
+    )
+
+    score = 100
+
+    missing_penalty = (
+        missing / total_cells
+    ) * 100
+
+    duplicate_penalty = (
+        duplicates / max(
+            len(df),
+            1
+        )
+    ) * 20
+
+    score -= missing_penalty
+    score -= duplicate_penalty
+
+    return max(
+        0,
+        round(score)
+    )
