@@ -158,6 +158,33 @@ def load_model(
 
     return model
 
+from sklearn.model_selection import cross_val_score
+
+def auto_ml_pipeline(models, X, y):
+
+    results = {}
+
+    best_score = -1
+    best_model = None
+    best_name = ""
+
+    for name, model in models.items():
+
+        scores = cross_val_score(model, X, y, cv=5)
+
+        avg_score = scores.mean()
+
+        results[name] = avg_score
+
+        if avg_score > best_score:
+            best_score = avg_score
+            best_model = model
+            best_name = name
+
+    best_model.fit(X, y)
+
+    return best_model, best_name, results
+
 
 def get_feature_importance(
     model,

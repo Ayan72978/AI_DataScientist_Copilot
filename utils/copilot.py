@@ -58,6 +58,12 @@ def suggest_target_column(df):
 
     return target
 
+def detect_problem_type(df, target):
+    if df[target].dtype == "object" or df[target].nunique() < 10:
+        return "Classification"
+    else:
+        return "Regression"
+
 
 def suggest_model(df, target):
 
@@ -194,3 +200,5 @@ def next_action_plan(df, target):
     )
 
     return actions
+
+

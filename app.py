@@ -35,6 +35,7 @@ from utils.insights import generate_insights
 
 from utils.ml_models import (
     train_models,
+    auto_ml_pipeline,
     predict_single,
     get_feature_importance
 )
@@ -75,155 +76,87 @@ df = st.session_state.get("df", None)
 if df is None:
     st.info("👆 Upload a CSV file to start")
     st.stop()
-    # =========================
+
+# =========================
 # OVERVIEW
 # =========================
-
 if page == "Overview":
 
     st.header("📊 Dataset Overview")
 
+    st.success("🚀 Welcome to AI Data Scientist Copilot")
+
     col1, col2, col3, col4 = st.columns(4)
 
-    col1.metric(
-        "Rows",
-        df.shape[0]
-    )
-
-    col2.metric(
-        "Columns",
-        df.shape[1]
-    )
-
-    col3.metric(
-        "Missing Values",
-        int(df.isnull().sum().sum())
-    )
-
-    col4.metric(
-        "Duplicates",
-        int(df.duplicated().sum())
-    )
+    col1.metric("Rows", df.shape[0])
+    col2.metric("Columns", df.shape[1])
+    col3.metric("Missing Values", int(df.isnull().sum().sum()))
+    col4.metric("Duplicates", int(df.duplicated().sum()))
 
     st.divider()
 
     st.subheader("Dataset Preview")
-
-    st.dataframe(
-        df.head(),
-        use_container_width=True
-    )
-
-    st.divider()
-
-    st.subheader("Dataset Information")
-
-    info = pd.DataFrame({
-        "Column": df.columns,
-        "Data Type": [
-            str(df[col].dtype)
-            for col in df.columns
-        ],
-        "Missing Values": [
-            df[col].isnull().sum()
-            for col in df.columns
-        ]
-    })
-
-    st.dataframe(
-        info,
-        use_container_width=True
-    )
+    st.dataframe(df.head(), use_container_width=True)
 
     st.divider()
 
     health = dataset_health(df)
 
-    st.subheader("Dataset Health")
+    st.metric("Health Score", f"{health['health_score']}%")
+    st.progress(int(health["health_score"]))
 
-    st.metric(
-        "Health Score",
-        f"{health['health_score']}%"
-    )
+    st.divider()
 
-    st.progress(
-        int(health["health_score"])
-    )
+    col1, col2 = st.columns(2)
 
-    # =========================
+    with col1:
+        st.metric(
+            "Numeric Features",
+            len(df.select_dtypes(include="number").columns)
+        )
+
+    with col2:
+        st.metric(
+            "Categorical Features",
+            len(df.select_dtypes(include=["object"]).columns)
+        )
+
+
+# =========================
 # DATA CLEANING
 # =========================
-
 elif page == "Data Cleaning":
 
     st.header("🧹 Data Cleaning")
 
     strategy = st.selectbox(
         "Missing Value Strategy",
-        [
-            "Mean",
-            "Median",
-            "Mode",
-            "Drop Rows"
-        ]
+        ["Mean", "Median", "Mode", "Drop Rows"]
     )
 
     if st.button("Apply Cleaning"):
 
-        df_cleaned = handle_missing_values(
-            df.copy(),
-            strategy
-        )
-
-        df_cleaned = remove_duplicates(
-            df_cleaned
-        )
+        df_cleaned = handle_missing_values(df.copy(), strategy)
+        df_cleaned = remove_duplicates(df_cleaned)
 
         st.session_state["df"] = df_cleaned
-
         df = df_cleaned
 
-        st.success(
-            "Cleaning completed successfully"
-        )
+        st.success("Cleaning completed successfully")
 
-        st.dataframe(
-            df.head(),
-            use_container_width=True
-        )
+    st.dataframe(df.head(), use_container_width=True)
 
-    st.divider()
+    csv = df.to_csv(index=False).encode("utf-8")
 
-    numeric_cols = df.select_dtypes(
-        include="number"
-    ).columns
+    st.download_button(
+        "📥 Download Cleaned Dataset",
+        csv,
+        "cleaned_dataset.csv",
+        "text/csv"
+    )
 
-    if len(numeric_cols) > 0:
 
-        st.subheader(
-            "📊 Outlier Detection"
-        )
-
-        selected_col = st.selectbox(
-            "Select Numeric Column",
-            numeric_cols
-        )
-
-        outliers = detect_outliers_iqr(
-            df,
-            selected_col
-        )
-
-        st.metric(
-            "Outliers Found",
-            len(outliers)
-        )
-
-        st.dataframe(
-            outliers.head(),
-            use_container_width=True
-        )
-
+    
 # =========================
 # VISUALIZATIONS
 # =========================
@@ -393,7 +326,11 @@ elif page == "Machine Learning":
         df_ml = df.copy().dropna()
 
         if len(df_ml) < 10:
-            st.error("Not enough data for training")
+
+            st.error(
+                "Not enough data for training"
+            )
+
             st.stop()
 
         for col in df_ml.columns:
@@ -417,7 +354,10 @@ elif page == "Machine Learning":
             X_test,
             y_test,
             problem
-        ) = train_models(X, y)
+        ) = train_models(
+            X,
+            y
+        )
 
         st.subheader(
             "🏆 Model Results"
@@ -436,6 +376,18 @@ elif page == "Machine Learning":
             use_container_width=True
         )
 
+        st.subheader(
+            "📊 Model Comparison"
+        )
+
+        chart_df = result_df.set_index(
+            "Model"
+        )
+
+        st.bar_chart(
+            chart_df
+        )
+
         st.success(
             f"Best Model: {best_name}"
         )
@@ -445,6 +397,7 @@ elif page == "Machine Learning":
         )
 
         st.session_state["model"] = best_model
+
         st.session_state["columns"] = X.columns
 
         joblib.dump(
@@ -489,7 +442,20 @@ elif page == "Machine Learning":
                     use_container_width=True
                 )
 
-        except:
+                st.subheader(
+                    "📈 Feature Importance Chart"
+                )
+
+                feature_chart = importance_df.set_index(
+                    "Feature"
+                )
+
+                st.bar_chart(
+                    feature_chart
+                )
+
+        except Exception:
+
             pass
 
     if "model" in st.session_state:
@@ -530,7 +496,53 @@ elif page == "Machine Learning":
                 f"Prediction: {prediction}"
             )
 
+            if "prediction_history" not in st.session_state:
 
+                st.session_state[
+                    "prediction_history"
+                ] = []
+
+            st.session_state[
+                "prediction_history"
+            ].append(
+                prediction
+            )
+
+        if "prediction_history" in st.session_state:
+
+            st.subheader(
+                "📜 Prediction History"
+            )
+
+            history_df = pd.DataFrame(
+                st.session_state[
+                    "prediction_history"
+                ],
+                columns=[
+                    "Prediction"
+                ]
+            )
+
+            st.dataframe(
+                history_df,
+                use_container_width=True
+            )
+
+            csv = history_df.to_csv(
+                index=False
+            ).encode(
+                "utf-8"
+            )
+
+            st.download_button(
+                label="📥 Download Predictions",
+                data=csv,
+                file_name="predictions.csv",
+                mime="text/csv"
+            )
+
+
+    
 # =========================
 # COPILOT
 # =========================
@@ -540,9 +552,10 @@ elif page == "Copilot":
     st.header("🧠 AI Copilot Dashboard")
 
     summary = dataset_summary(df)
-
     target = suggest_target_column(df)
-
+    problem = detect_problem_type(df, target)
+    score = data_quality_score(df)
+    
     model = suggest_model(
         df,
         target
@@ -557,99 +570,95 @@ elif page == "Copilot":
 
     col1, col2, col3 = st.columns(3)
 
-    col1.metric(
-        "Rows",
-        summary["rows"]
-    )
+    col1.metric("Rows", summary["rows"])
+    col2.metric("Columns", summary["columns"])
+    col3.metric("Missing", summary["missing_values"])
 
-    col2.metric(
-        "Columns",
-        summary["columns"]
-    )
+    st.divider()
 
-    col3.metric(
-        "Missing",
-        summary["missing_values"]
+    st.subheader("🤖 Recommendations")
+
+    st.success(f"Suggested Target: {target}")
+    st.info(f"Suggested Model: {model}")
+    st.subheader("🧠 AI Problem Detection")
+    st.info(f"Detected Problem Type: {problem}")
+    
+    st.subheader("📊 AI Data Quality Score")
+
+    st.metric("Score", f"{score}/100")
+    st.progress(int(score))
+
+    st.subheader("🎯 Dataset Recommendation")
+
+    if df.shape[0] < 100:
+        st.warning("Small dataset detected. More data may improve model performance.")
+
+    elif df.shape[0] < 1000:
+        st.info("Medium-sized dataset detected. Suitable for most machine learning algorithms.")
+
+    else:
+        st.success("Large dataset detected. Excellent for advanced machine learning models.")
+
+    st.subheader("📋 Dataset Quality Report")
+
+    missing = df.isnull().sum().sum()
+    duplicates = df.duplicated().sum()
+
+    if missing == 0:
+        st.success("No missing values detected.")
+    else:
+        st.warning(f"{missing} missing values detected.")
+
+    if duplicates == 0:
+        st.success("No duplicate rows detected.")
+    else:
+        st.warning(f"{duplicates} duplicate rows detected.")
+
+    report = f"""
+Dataset Summary
+
+Rows: {df.shape[0]}
+Columns: {df.shape[1]}
+Missing Values: {missing}
+Duplicate Rows: {duplicates}
+
+Suggested Target: {target}
+Suggested Model: {model}
+"""
+
+    st.download_button(
+        label="📥 Download Summary Report",
+        data=report,
+        file_name="dataset_report.txt",
+        mime="text/plain"
     )
 
     st.divider()
 
-    st.subheader(
-        "📂 Dataset Structure"
-    )
-
-    st.write(
-        "Numeric Columns"
-    )
-
-    st.write(
-        summary["numeric_columns"]
-    )
-
-    st.write(
-        "Categorical Columns"
-    )
-
-    st.write(
-        summary["categorical_columns"]
-    )
-
-    st.divider()
-
-    st.subheader(
-        "🤖 Recommendations"
-    )
-
-    st.success(
-        f"Suggested Target: {target}"
-    )
-
-    st.info(
-        f"Suggested Model: {model}"
-    )
-
-    st.divider()
-
-    st.subheader(
-        "💡 Smart Insights"
-    )
+    st.subheader("💡 Smart Insights")
 
     for insight in insights:
-
-        st.success(
-            insight
-        )
+        st.success(str(insight))
 
     st.divider()
 
-    st.subheader(
-        "🚀 Action Plan"
-    )
+    st.subheader("🚀 Action Plan")
 
     for action in actions:
-
-        st.warning(
-            action
-        )
+        st.warning(action)
 
     st.divider()
 
-    st.subheader(
-        "💬 Ask Your Dataset"
-    )
+    st.subheader("💬 Ask Your Dataset")
 
     if "chat_history" not in st.session_state:
+        st.session_state["chat_history"] = []
 
-        st.session_state.chat_history = []
-
-    question = st.text_input(
-        "Ask a question"
-    )
+    question = st.text_input("Ask a question")
 
     if question:
 
         q = question.lower()
-
         answer = ""
 
         if "row" in q:
@@ -670,37 +679,13 @@ elif page == "Copilot":
         elif "model" in q:
             answer = f"Suggested model: {model}"
 
-        elif "summary" in q:
-            answer = str(
-                df.describe(
-                    include="all"
-                )
-            )
-
         else:
-            answer = (
-                "Try asking about rows, columns, missing values, target column or model recommendation."
-            )
+            answer = "Try asking about rows, columns, missing values, target column, or model recommendation."
 
-        st.session_state.chat_history.append(
-            (
-                question,
-                answer
-            )
-        )
+        st.session_state["chat_history"].append((question, answer))
 
-    st.markdown(
-        "### Chat History"
-    )
+    st.markdown("### Chat History")
 
-    for q, a in reversed(
-        st.session_state.chat_history[-10:]
-    ):
-
-        st.markdown(
-            f"**You:** {q}"
-        )
-
-        st.success(
-            a
-        )
+    for q, a in reversed(st.session_state["chat_history"][-10:]):
+        st.markdown(f"**You:** {q}")
+        st.success(a)
