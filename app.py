@@ -3,6 +3,7 @@ import pandas as pd
 import joblib
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
+from utils.automl import train_automl
 
 from utils.copilot import (
     dataset_summary,
@@ -36,7 +37,6 @@ from utils.visualize import (
     bar_plot
 )
 
-from utils.insights import generate_insights
 
 from utils.ml_models import (
     train_models,
@@ -51,23 +51,57 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("🤖 AI Data Scientist Copilot")
-st.markdown("### Made by Ayan Behlim")
+st.sidebar.title("🧠 AI Data Scientist Copilot")
 
-st.sidebar.title("Navigation")
-
+# -------------------------
+# NAVIGATION
+# -------------------------
+# -------------------------
+# SIDEBAR NAVIGATION
+# -------------------------
 page = st.sidebar.radio(
-    "Go to",
+    "Navigation",
     [
         "Overview",
         "Data Cleaning",
-        "Visualizations",
+        "Visualization",
         "AI Insights",
-        "Machine Learning",
-        "Copilot"
+        "Copilot",
+        "Auto ML",
+        "Predict Data"
     ]
 )
 
+st.sidebar.markdown("---")
+st.sidebar.info("ML + AI Project Dashboard")
+
+# -------------------------
+# PAGE LOGIC
+# -------------------------
+if page == "Overview":
+    st.header("Overview")
+
+elif page == "Data Cleaning":
+    st.header("Data Cleaning")
+
+elif page == "Visualization":
+    st.header("Visualization")
+
+elif page == "AI Insights":
+    st.header("AI Insights")
+
+elif page == "Copilot":
+    st.header("Copilot")
+
+elif page == "Auto ML":
+    st.header("Auto ML")
+
+elif page == "Predict Data":
+    st.header("Predict Data")
+
+# -------------------------
+# FILE UPLOAD
+# -------------------------
 uploaded_file = st.file_uploader(
     "Upload CSV File",
     type=["csv"]
@@ -79,9 +113,10 @@ if uploaded_file is not None:
 df = st.session_state.get("df", None)
 
 if df is None:
-    st.info("👆 Upload a CSV file to start")
+    st.info("Upload a CSV file to start")
     st.stop()
-
+    
+    
 # =========================
 # OVERVIEW
 # =========================
@@ -1133,3 +1168,123 @@ Quality Score: {score}/100
         )
 
         st.success(a)
+ # =========================
+# AutomL
+# =========================   
+        
+elif page == "Auto ML":
+
+    st.header("🤖 Auto ML")
+
+    # -----------------------------
+    # Detect target + problem type
+    # -----------------------------
+    target = suggest_target_column(df)
+
+    problem = detect_problem_type(df, target)
+
+    st.write(f"Detected Problem Type: {problem}")
+
+    # -----------------------------
+    # Train Models Button
+    # -----------------------------
+    if st.button("Train Models"):
+
+        results, best_model, trained_models, feature_columns = train_automl(
+            df,
+            target,
+            problem
+        )
+
+        # -----------------------------
+        # Show model scores
+        # -----------------------------
+        st.subheader("📊 Model Scores")
+
+        for model, score in results.items():
+            st.metric(model, round(score, 4))
+
+        st.success(f"🏆 Best Model: {best_model}")
+
+        # -----------------------------
+        # Save everything for next pages
+        # -----------------------------
+        st.session_state["trained_models"] = trained_models
+        st.session_state["best_model_name"] = best_model
+        st.session_state["feature_columns"] = feature_columns
+        
+    #############
+    # Predict Data
+    ############    
+elif page == "Predict Data":
+
+    st.header("🔮 Predict New Data")
+
+    # -----------------------------
+    # Check if model is trained
+    # -----------------------------
+    if "trained_models" not in st.session_state:
+        st.warning("⚠ Please train a model first in Auto ML page")
+        st.stop()
+
+    if "feature_columns" not in st.session_state:
+        st.warning("⚠ Feature columns not found. Please retrain model.")
+        st.stop()
+
+    # -----------------------------
+    # Upload new dataset
+    # -----------------------------
+    uploaded_file = st.file_uploader(
+        "Upload CSV file for prediction",
+        type=["csv"]
+    )
+
+    if uploaded_file:
+
+        new_df = pd.read_csv(uploaded_file)
+
+        st.subheader("📄 Input Data Preview")
+        st.dataframe(new_df.head())
+
+        # -----------------------------
+        # Select model
+        # -----------------------------
+        model_name = st.selectbox(
+            "Choose Model",
+            list(st.session_state["trained_models"].keys())
+        )
+
+        model = st.session_state["trained_models"][model_name]
+
+        feature_cols = st.session_state["feature_columns"]
+
+        # -----------------------------
+        # Align columns with training data
+        # -----------------------------
+        X_new = new_df.reindex(columns=feature_cols)
+
+        # Fill missing values safely
+        X_new = X_new.fillna(0)
+
+        # -----------------------------
+        # Prediction
+        # -----------------------------
+        predictions = model.predict(X_new)
+
+        new_df["Prediction"] = predictions
+
+        # -----------------------------
+        # Show results
+        # -----------------------------
+        st.subheader("📊 Prediction Results")
+        st.dataframe(new_df)
+
+        # -----------------------------
+        # Download results
+        # -----------------------------
+        st.download_button(
+            "⬇ Download Predictions",
+            new_df.to_csv(index=False),
+            file_name="predictions.csv",
+            mime="text/csv"
+        )
