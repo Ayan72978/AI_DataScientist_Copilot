@@ -1,39 +1,53 @@
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, r2_score
 
-from sklearn.linear_model import LogisticRegression, LinearRegression
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+# Classification Models
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.svm import SVC
+from sklearn.naive_bayes import GaussianNB
+
+# Regression Models
+from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.tree import DecisionTreeRegressor
+from sklearn.svm import SVR
 
 
 def train_automl(df, target, problem_type):
 
     # -----------------------------
-    # Split features and target
+    # Features and Target
     # -----------------------------
     X = df.drop(columns=[target])
     y = df[target]
 
     # -----------------------------
-    # Keep numeric only
+    # Keep Numeric Features
     # -----------------------------
     X = X.select_dtypes(include=["number"])
 
     # -----------------------------
-    # Handle missing values
+    # Handle Missing Values
     # -----------------------------
     X = X.fillna(X.mean())
 
-    # Remove missing target rows
+    # Remove rows with missing target
     mask = y.notna()
+
     X = X[mask]
     y = y[mask]
 
-    # Safety check
+    # -----------------------------
+    # Safety Check
+    # -----------------------------
     if len(X) == 0:
-        return {}, "No valid data", {}
+        return {}, "No Valid Data", None, []
 
     # -----------------------------
-    # Train/test split
+    # Train/Test Split
     # -----------------------------
     X_train, X_test, y_train, y_test = train_test_split(
         X,
@@ -45,51 +59,123 @@ def train_automl(df, target, problem_type):
     results = {}
     trained_models = {}
 
-    # =============================
+    # ==================================================
     # CLASSIFICATION
-    # =============================
+    # ==================================================
     if problem_type == "Classification":
 
         models = {
-            "Logistic Regression": LogisticRegression(max_iter=1000),
-            "Random Forest": RandomForestClassifier()
+
+            "Logistic Regression":
+            LogisticRegression(max_iter=1000),
+
+            "Random Forest":
+            RandomForestClassifier(random_state=42),
+
+            "Decision Tree":
+            DecisionTreeClassifier(random_state=42),
+
+            "KNN":
+            KNeighborsClassifier(),
+
+            "SVM":
+            SVC(),
+
+            "Naive Bayes":
+            GaussianNB()
         }
 
         for name, model in models.items():
 
-            model.fit(X_train, y_train)
+            try:
 
-            trained_models[name] = model   # ✅ STORE MODEL HERE
+                model.fit(X_train, y_train)
 
-            pred = model.predict(X_test)
+                pred = model.predict(X_test)
 
-            results[name] = accuracy_score(y_test, pred)
+                score = accuracy_score(
+                    y_test,
+                    pred
+                )
 
-    # =============================
+                results[name] = score
+
+                trained_models[name] = model
+
+            except Exception:
+                continue
+
+    # ==================================================
     # REGRESSION
-    # =============================
+    # ==================================================
     else:
 
         models = {
-            "Linear Regression": LinearRegression(),
-            "Random Forest": RandomForestRegressor()
+
+            "Linear Regression":
+            LinearRegression(),
+
+            "Random Forest":
+            RandomForestRegressor(
+                random_state=42
+            ),
+
+            "Decision Tree":
+            DecisionTreeRegressor(
+                random_state=42
+            ),
+
+            "SVR":
+            SVR()
         }
 
         for name, model in models.items():
 
-            model.fit(X_train, y_train)
+            try:
 
-            trained_models[name] = model   # ✅ STORE MODEL HERE
+                model.fit(X_train, y_train)
 
-            pred = model.predict(X_test)
+                pred = model.predict(X_test)
 
-            results[name] = r2_score(y_test, pred)
+                score = r2_score(
+                    y_test,
+                    pred
+                )
+
+                results[name] = score
+
+                trained_models[name] = model
+
+            except Exception:
+                continue
 
     # -----------------------------
-    # Best model selection
+    # No Model Trained
     # -----------------------------
-    best_model = max(results, key=results.get)
+    if len(results) == 0:
+
+        return {}, "No Model Trained", None, []
+
+    # -----------------------------
+    # Best Model
+    # -----------------------------
+    best_model_name = max(
+        results,
+        key=results.get
+    )
+
+    best_model = trained_models[
+        best_model_name
+    ]
 
     feature_columns = X.columns.tolist()
 
-    return results, best_model, trained_models, feature_columns
+    # -----------------------------
+    # Return Results
+    # -----------------------------
+    return (
+        results,
+        best_model_name,
+        best_model,
+        feature_columns
+    )

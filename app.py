@@ -65,6 +65,7 @@ page = st.sidebar.radio(
         "Overview",
         "Data Cleaning",
         "Visualization",
+        "Machine Learning",
         "AI Insights",
         "Copilot",
         "Auto ML",
@@ -80,6 +81,7 @@ st.sidebar.info("ML + AI Project Dashboard")
 # -------------------------
 if page == "Overview":
     st.header("Overview")
+    
 
 elif page == "Data Cleaning":
     st.header("Data Cleaning")
@@ -99,16 +101,75 @@ elif page == "Auto ML":
 elif page == "Predict Data":
     st.header("Predict Data")
 
+
 # -------------------------
 # FILE UPLOAD
 # -------------------------
 uploaded_file = st.file_uploader(
-    "Upload CSV File",
-    type=["csv"]
+    "📁 Upload Dataset",
+    type=["csv", "xlsx", "xls"]
+)
+st.title("🤖 AI Data Scientist Copilot")
+
+st.caption(
+    "Upload data, clean it, visualize insights, train ML models and make predictions."
 )
 
+st.divider()
+
 if uploaded_file is not None:
-    st.session_state["df"] = pd.read_csv(uploaded_file)
+
+    try:
+
+        file_name = uploaded_file.name.lower()
+
+        if file_name.endswith(".csv"):
+
+            try:
+
+                df = pd.read_csv(
+                    uploaded_file,
+                    encoding="utf-8"
+                )
+
+            except Exception:
+
+                uploaded_file.seek(0)
+
+                df = pd.read_csv(
+                    uploaded_file,
+                    encoding="latin1"
+                )
+
+        elif file_name.endswith(
+            (".xlsx", ".xls")
+        ):
+
+            df = pd.read_excel(
+                uploaded_file
+            )
+
+        else:
+
+            st.error(
+                "❌ Unsupported file format"
+            )
+
+            st.stop()
+
+        st.session_state["df"] = df
+
+        st.success(
+            f"✅ Dataset loaded successfully ({df.shape[0]} rows, {df.shape[1]} columns)"
+        )
+
+    except Exception as e:
+
+        st.error(
+            f"❌ Error loading file: {e}"
+        )
+
+        st.stop()
 
 df = st.session_state.get("df", None)
 
@@ -201,9 +262,9 @@ elif page == "Data Cleaning":
 # VISUALIZATIONS
 # =========================
 
-elif page == "Visualizations":
+elif page == "Visualization":
 
-    st.header("📈 Advanced Visualizations")
+    st.header("📈 Advanced Visualization")
 
     graph_type = st.selectbox(
         "Select Visualization",
@@ -343,6 +404,7 @@ elif page == "AI Insights":
     st.write(
         f"Missing Values: {df.isnull().sum().sum()}"
     )
+    
 elif page == "Machine Learning":
 
     st.header("🤖 Machine Learning Engine")
