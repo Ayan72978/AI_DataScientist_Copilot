@@ -1,12 +1,26 @@
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Paragraph,
+    Spacer
+)
+
+from reportlab.lib.styles import (
+    getSampleStyleSheet
+)
 
 
-def generate_report(summary, best_model, problem):
+def generate_report(
+    summary,
+    target,
+    problem,
+    best_model
+):
 
-    filename = "analysis_report.pdf"
+    pdf_file = "report.pdf"
 
-    doc = SimpleDocTemplate(filename)
+    doc = SimpleDocTemplate(
+        pdf_file
+    )
 
     styles = getSampleStyleSheet()
 
@@ -19,20 +33,27 @@ def generate_report(summary, best_model, problem):
         )
     )
 
-    content.append(Spacer(1, 12))
+    content.append(
+        Spacer(1, 12)
+    )
 
     content.append(
         Paragraph(
-            str(summary),
+            f"Rows: {summary['rows']}",
             styles["BodyText"]
         )
     )
 
-    content.append(Spacer(1, 12))
+    content.append(
+        Paragraph(
+            f"Columns: {summary['columns']}",
+            styles["BodyText"]
+        )
+    )
 
     content.append(
         Paragraph(
-            f"Best Model: {best_model}",
+            f"Target Column: {target}",
             styles["BodyText"]
         )
     )
@@ -44,6 +65,13 @@ def generate_report(summary, best_model, problem):
         )
     )
 
+    content.append(
+        Paragraph(
+            f"Best Model: {best_model}",
+            styles["BodyText"]
+        )
+    )
+
     doc.build(content)
 
-    return filename
+    return pdf_file

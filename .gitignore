@@ -1,2 +1,5 @@
-best_model.pkl
 *.pkl
+best_model.pkl
+__pycache__/
+*.pyc
+.env
