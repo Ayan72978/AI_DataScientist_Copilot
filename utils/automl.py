@@ -1,3 +1,6 @@
+import joblib
+import pandas as pd
+
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, r2_score
 
@@ -19,7 +22,7 @@ from sklearn.svm import SVR
 def train_automl(df, target, problem_type):
 
     # -----------------------------
-    # Features and Target
+    # Features & Target
     # -----------------------------
     X = df.drop(columns=[target])
     y = df[target]
@@ -30,11 +33,13 @@ def train_automl(df, target, problem_type):
     X = X.select_dtypes(include=["number"])
 
     # -----------------------------
-    # Handle Missing Values
+    # Fill Missing Values
     # -----------------------------
     X = X.fillna(X.mean())
 
-    # Remove rows with missing target
+    # -----------------------------
+    # Remove Missing Target Rows
+    # -----------------------------
     mask = y.notna()
 
     X = X[mask]
@@ -44,10 +49,18 @@ def train_automl(df, target, problem_type):
     # Safety Check
     # -----------------------------
     if len(X) == 0:
-        return {}, "No Valid Data", None, []
+
+        return (
+            {},
+            "No Model",
+            0,
+            None,
+            [],
+            {}
+        )
 
     # -----------------------------
-    # Train/Test Split
+    # Train Test Split
     # -----------------------------
     X_train, X_test, y_train, y_test = train_test_split(
         X,
@@ -57,6 +70,7 @@ def train_automl(df, target, problem_type):
     )
 
     results = {}
+
     trained_models = {}
 
     # ==================================================
@@ -70,10 +84,14 @@ def train_automl(df, target, problem_type):
             LogisticRegression(max_iter=1000),
 
             "Random Forest":
-            RandomForestClassifier(random_state=42),
+            RandomForestClassifier(
+                random_state=42
+            ),
 
             "Decision Tree":
-            DecisionTreeClassifier(random_state=42),
+            DecisionTreeClassifier(
+                random_state=42
+            ),
 
             "KNN":
             KNeighborsClassifier(),
@@ -89,13 +107,18 @@ def train_automl(df, target, problem_type):
 
             try:
 
-                model.fit(X_train, y_train)
+                model.fit(
+                    X_train,
+                    y_train
+                )
 
-                pred = model.predict(X_test)
+                preds = model.predict(
+                    X_test
+                )
 
                 score = accuracy_score(
                     y_test,
-                    pred
+                    preds
                 )
 
                 results[name] = score
@@ -133,13 +156,18 @@ def train_automl(df, target, problem_type):
 
             try:
 
-                model.fit(X_train, y_train)
+                model.fit(
+                    X_train,
+                    y_train
+                )
 
-                pred = model.predict(X_test)
+                preds = model.predict(
+                    X_test
+                )
 
                 score = r2_score(
                     y_test,
-                    pred
+                    preds
                 )
 
                 results[name] = score
@@ -154,7 +182,14 @@ def train_automl(df, target, problem_type):
     # -----------------------------
     if len(results) == 0:
 
-        return {}, "No Model Trained", None, []
+        return (
+            {},
+            "No Model",
+            0,
+            None,
+            [],
+            {}
+        )
 
     # -----------------------------
     # Best Model
@@ -164,11 +199,33 @@ def train_automl(df, target, problem_type):
         key=results.get
     )
 
+    best_score = results[
+        best_model_name
+    ]
+
     best_model = trained_models[
         best_model_name
     ]
 
-    feature_columns = X.columns.tolist()
+    feature_columns = (
+        X.columns.tolist()
+    )
+
+    # -----------------------------
+    # Save Model
+    # -----------------------------
+    joblib.dump(
+        best_model,
+        "best_model.pkl"
+    )
+
+    # -----------------------------
+    # Save Feature Columns
+    # -----------------------------
+    joblib.dump(
+        feature_columns,
+        "feature_columns.pkl"
+    )
 
     # -----------------------------
     # Return Results
@@ -176,6 +233,8 @@ def train_automl(df, target, problem_type):
     return (
         results,
         best_model_name,
+        best_score,
         best_model,
-        feature_columns
+        feature_columns,
+        trained_models
     )

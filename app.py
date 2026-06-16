@@ -1,8 +1,7 @@
 import streamlit as st
 import pandas as pd
-import joblib
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
+import matplotlib.pyplot as plt
+
 from utils.automl import train_automl
 from utils.reports import generate_report
 
@@ -45,21 +44,30 @@ from utils.ml_models import (
     get_feature_importance
 )
 
+from utils.evaluation import (
+    show_confusion_matrix,
+    show_classification_report
+)
+
 st.set_page_config(
     page_title="AI Data Scientist Copilot",
     page_icon="🤖",
     layout="wide"
 )
 
+# -------------------------
+# SIDEBAR NAVIGATION
+# -------------------------
 page = st.sidebar.radio(
-    "Navigation",
+    "🚀 AI Data Scientist Copilot",
     [
         "🏠 Overview",
         "🧹 Data Cleaning",
         "📊 Visualization",
         "🧠 AI Insights",
+        "📈 Machine Learning",
         "🤖 Copilot",
-        "⚙ Auto ML",
+        "🚀 Auto ML",          # FIX: was "⚙ Auto ML" in condition below
         "🔮 Predict Data",
         "📄 Reports"
     ]
@@ -70,9 +78,6 @@ st.sidebar.info("ML + AI Project Dashboard")
 
 st.title("🤖 AI Data Scientist Copilot")
 
-# -------------------------
-# HEADER
-# -------------------------
 st.header(page)
 
 st.caption(
@@ -136,7 +141,6 @@ if page == "🏠 Overview":
     st.success("🚀 Welcome to AI Data Scientist Copilot")
 
     col1, col2, col3, col4 = st.columns(4)
-
     col1.metric("Rows", df.shape[0])
     col2.metric("Columns", df.shape[1])
     col3.metric("Missing Values", int(df.isnull().sum().sum()))
@@ -188,7 +192,7 @@ elif page == "🧹 Data Cleaning":
         st.session_state["df"] = df_cleaned
         df = df_cleaned
 
-        st.success("Cleaning completed successfully")
+        st.success("✅ Cleaning completed successfully")
 
     st.dataframe(df.head(), use_container_width=True)
 
@@ -274,6 +278,9 @@ elif page == "📊 Visualization":
         col = st.selectbox("Column", cat_cols)
         bar_plot(df, col)
 
+    else:
+        st.warning("⚠ No suitable columns found for this chart type.")
+
 
 # =========================
 # 🧠 AI INSIGHTS
@@ -295,17 +302,118 @@ elif page == "🧠 AI Insights":
 
 
 # =========================
+# 📈 MACHINE LEARNING     ← FIX: this entire block was missing
+# =========================
+elif page == "📈 Machine Learning":
+
+    st.subheader("📈 Machine Learning")
+
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+
+    if len(numeric_cols) < 2:
+        st.error("❌ Need at least 2 numeric columns to train a model.")
+        st.stop()
+
+    target_col = st.selectbox(
+        "🎯 Select Target Column",
+        numeric_cols,
+        index=len(numeric_cols) - 1
+    )
+
+    feature_cols = [c for c in numeric_cols if c != target_col]
+
+    st.write(f"**Features:** {feature_cols}")
+    st.write(f"**Target:** {target_col}")
+
+    if st.button("🚀 Train Models"):
+
+        with st.spinner("Training models... please wait"):
+
+            try:
+                X = df[feature_cols].fillna(df[feature_cols].mean())
+                y = df[target_col].dropna()
+                X = X.loc[y.index]
+
+                best_model, best_name, results, X_test, y_test, problem = train_models(X, y)
+
+                # Store in session
+                st.session_state["ml_best_model"]   = best_model
+                st.session_state["ml_best_name"]     = best_name
+                st.session_state["ml_results"]       = results
+                st.session_state["ml_X_test"]        = X_test
+                st.session_state["ml_y_test"]        = y_test
+                st.session_state["ml_problem"]       = problem
+                st.session_state["ml_feature_cols"]  = feature_cols
+
+                st.success(f"✅ Training complete! Best Model: **{best_name}**")
+
+            except Exception as e:
+                st.error(f"❌ Training failed: {e}")
+                st.stop()
+
+    # Show results if already trained
+    if "ml_results" in st.session_state:
+
+        st.divider()
+        st.subheader("📊 Model Comparison")
+
+        results     = st.session_state["ml_results"]
+        best_name   = st.session_state["ml_best_name"]
+        best_model  = st.session_state["ml_best_model"]
+        X_test      = st.session_state["ml_X_test"]
+        y_test      = st.session_state["ml_y_test"]
+        problem     = st.session_state["ml_problem"]
+        feature_cols = st.session_state["ml_feature_cols"]
+
+        # Filter out CV rows for clean display
+        main_results = {k: v for k, v in results.items() if "CV" not in k and isinstance(v, float)}
+
+        results_df = pd.DataFrame(
+            list(main_results.items()),
+            columns=["Model", "Score"]
+        ).sort_values("Score", ascending=False)
+
+        st.dataframe(results_df, use_container_width=True)
+
+        st.success(f"🏆 Best Model: **{best_name}**")
+
+        best_score = main_results.get(best_name, 0)
+        metric_label = "Accuracy" if problem == "classification" else "R² Score"
+        st.info(f"⭐ {metric_label}: **{best_score:.4f}**")
+
+        # Confusion matrix / classification report for classifiers
+        if problem == "classification":
+            st.divider()
+            st.subheader("📉 Model Evaluation")
+            predictions = best_model.predict(X_test)
+            show_confusion_matrix(y_test, predictions)
+            show_classification_report(y_test, predictions)
+
+        # Feature importance
+        st.divider()
+        st.subheader("🔍 Feature Importance")
+
+        importance = get_feature_importance(best_model, feature_cols)
+
+        if importance:
+            imp_df = pd.DataFrame(importance, columns=["Feature", "Importance"])
+            st.bar_chart(imp_df.set_index("Feature"))
+        else:
+            st.info("Feature importance not available for this model type.")
+
+
+# =========================
 # 🤖 COPILOT
 # =========================
 elif page == "🤖 Copilot":
 
     summary = dataset_summary(df)
-    target = suggest_target_column(df)
+    target  = suggest_target_column(df)
     problem = detect_problem_type(df, target)
-    score = data_quality_score(df)
-    model = suggest_model(df, target)
+    score   = data_quality_score(df)
+    model   = suggest_model(df, target)
     insights = generate_insights(df)
-    actions = next_action_plan(df, target)
+    actions  = next_action_plan(df, target)
 
     col1, col2, col3 = st.columns(3)
     col1.metric("Rows", summary["rows"])
@@ -330,13 +438,13 @@ elif page == "🤖 Copilot":
     if df.shape[0] < 100:
         st.warning("Small dataset detected. More data may improve model performance.")
     elif df.shape[0] < 1000:
-        st.info("Medium-sized dataset detected. Suitable for most machine learning algorithms.")
+        st.info("Medium-sized dataset. Suitable for most machine learning algorithms.")
     else:
-        st.success("Large dataset detected. Excellent for advanced machine learning models.")
+        st.success("Large dataset. Excellent for advanced machine learning models.")
 
     st.subheader("📋 Dataset Quality Report")
 
-    missing = df.isnull().sum().sum()
+    missing    = df.isnull().sum().sum()
     duplicates = df.duplicated().sum()
 
     if missing == 0:
@@ -349,39 +457,37 @@ elif page == "🤖 Copilot":
     else:
         st.warning(f"{duplicates} duplicate rows detected.")
 
-    report = f"""
+    report_txt = f"""
 Dataset Summary
 
-Rows: {df.shape[0]}
-Columns: {df.shape[1]}
-Missing Values: {missing}
-Duplicate Rows: {duplicates}
+Rows             : {df.shape[0]}
+Columns          : {df.shape[1]}
+Missing Values   : {missing}
+Duplicate Rows   : {duplicates}
 
-Suggested Target: {target}
-Suggested Model: {model}
-Problem Type: {problem}
-Quality Score: {score}/100
+Suggested Target : {target}
+Suggested Model  : {model}
+Problem Type     : {problem}
+Quality Score    : {score}/100
 """
 
     st.download_button(
         label="📥 Download Summary Report",
-        data=report,
+        data=report_txt,
         file_name="dataset_report.txt",
         mime="text/plain"
     )
 
-    report_df = pd.DataFrame(
-        {
-            "Metric": [
-                "Rows", "Columns", "Missing Values", "Duplicate Rows",
-                "Target Column", "Suggested Model", "Problem Type", "Quality Score"
-            ],
-            "Value": [
-                df.shape[0], df.shape[1], missing, duplicates,
-                target, model, problem, score
-            ]
-        }
-    )
+    report_df = pd.DataFrame({
+        "Metric": [
+            "Rows", "Columns", "Missing Values", "Duplicate Rows",
+            "Target Column", "Suggested Model", "Problem Type", "Quality Score"
+        ],
+        "Value": [
+            df.shape[0], df.shape[1], missing, duplicates,
+            target, model, problem, score
+        ]
+    })
 
     csv_report = report_df.to_csv(index=False).encode("utf-8")
 
@@ -395,14 +501,12 @@ Quality Score: {score}/100
     st.divider()
 
     st.subheader("💡 Smart Insights")
-
     for insight in insights:
         st.success(str(insight))
 
     st.divider()
 
     st.subheader("🚀 Action Plan")
-
     for action in actions:
         st.warning(action)
 
@@ -413,16 +517,15 @@ Quality Score: {score}/100
     if "chat_history" not in st.session_state:
         st.session_state["chat_history"] = []
 
-    question = st.text_input("Ask a question")
+    question = st.text_input("Ask a question about your dataset")
 
     if question:
         q = question.lower()
-        answer = ""
 
         if "row" in q:
-            answer = f"Dataset contains {df.shape[0]} rows"
+            answer = f"Dataset contains {df.shape[0]} rows."
         elif "column" in q:
-            answer = f"Dataset contains {df.shape[1]} columns"
+            answer = f"Dataset contains {df.shape[1]} columns."
         elif "missing" in q:
             answer = f"Missing values: {df.isnull().sum().sum()}"
         elif "duplicate" in q:
@@ -431,86 +534,104 @@ Quality Score: {score}/100
             answer = f"Suggested target: {target}"
         elif "model" in q:
             answer = f"Suggested model: {model}"
+        elif "score" in q or "quality" in q:
+            answer = f"Data quality score: {score}/100"
+        elif "problem" in q or "type" in q:
+            answer = f"Problem type: {problem}"
         else:
-            answer = "Try asking about rows, columns, missing values, target column, or model recommendation."
+            answer = "Try asking about: rows, columns, missing values, duplicates, target column, model, or quality score."
 
         st.session_state["chat_history"].append((question, answer))
 
     st.markdown("### Chat History")
-
     for q, a in reversed(st.session_state["chat_history"][-10:]):
         st.markdown(f"**You:** {q}")
         st.success(a)
 
 
 # =========================
-# ⚙ AUTO ML
+# 🚀 AUTO ML              ← FIX: emoji was "⚙ Auto ML" before — now matches sidebar
 # =========================
-elif page == "⚙ Auto ML":
+elif page == "🚀 Auto ML":
+
+    st.subheader("🤖 Auto ML — Automatic Model Training")
 
     target = suggest_target_column(df)
 
     if target is None:
-        st.warning("No suitable target column found.")
+        st.error("❌ No suitable target column found.")
+        st.stop()
 
-    else:
+    st.write(f"🎯 **Auto-detected Target Column:** `{target}`")
+
+    problem = detect_problem_type(df, target)
+    st.write(f"📌 **Problem Type:** `{problem}`")
+
+    # Allow user to override target
+    all_cols = df.columns.tolist()
+    target_override = st.selectbox(
+        "Override Target Column (optional)",
+        all_cols,
+        index=all_cols.index(target)
+    )
+
+    if target_override != target:
+        target = target_override
         problem = detect_problem_type(df, target)
+        st.info(f"✅ Target overridden to `{target}` | Problem: `{problem}`")
 
-        st.write(f"🎯 Target Column: {target}")
-        st.write(f"📌 Problem Type: {problem}")
-        st.info("AutoML will train multiple models and select the best one.")
+    if st.button("🚀 Train All Models"):
 
-        if st.button("🚀 Train Models"):
+        with st.spinner("Training models... please wait"):
 
-            with st.spinner("Training models..."):
-                (
-                    results,
-                    best_model_name,
-                    best_model,
-                    feature_columns
-                ) = train_automl(df, target, problem)
-
-            if len(results) == 0:
-                st.error("❌ No model could be trained.")
-
-            else:
-                st.success(f"🏆 Best Model: {best_model_name}")
-
-                leaderboard = pd.DataFrame(
-                    {
-                        "Model": list(results.keys()),
-                        "Score": list(results.values())
-                    }
+            try:
+                # FIX: train_automl returns 6 values — unpack all 6
+                results, best_model_name, best_score, best_model, feature_columns, trained_models = train_automl(
+                    df, target, problem
                 )
 
-                leaderboard = leaderboard.sort_values(by="Score", ascending=False)
+                if len(results) == 0:
+                    st.error("❌ No model could be trained. Check your dataset.")
+                    st.stop()
 
-                st.subheader("🏆 Model Leaderboard")
-                st.dataframe(leaderboard, use_container_width=True)
+                # Store everything in session
+                st.session_state["best_model"]       = best_model
+                st.session_state["best_model_name"]  = best_model_name
+                st.session_state["feature_columns"]  = feature_columns
+                st.session_state["trained_models"]   = trained_models
+                st.session_state["automl_results"]   = results
+                st.session_state["automl_score"]     = best_score
+                st.session_state["automl_target"]    = target
+                st.session_state["automl_problem"]   = problem
 
-                st.subheader("📊 Model Performance")
-                st.bar_chart(leaderboard.set_index("Model"))
+            except Exception as e:
+                st.error(f"❌ Training error: {e}")
+                st.stop()
 
-                joblib.dump(best_model, "best_model.pkl")
+    # Show results if trained
+    if "automl_results" in st.session_state:
 
-                st.session_state["trained_models"] = True
-                st.session_state["best_model"] = best_model
-                st.session_state["best_model_name"] = best_model_name
-                st.session_state["feature_columns"] = feature_columns
+        results         = st.session_state["automl_results"]
+        best_model_name = st.session_state["best_model_name"]
+        best_score      = st.session_state["automl_score"]
 
-                st.success("✅ Model saved successfully.")
+        st.divider()
+        st.subheader("📊 Model Comparison")
 
-                st.subheader("📋 Features Used")
-                st.write(feature_columns)
+        results_df = pd.DataFrame(
+            list(results.items()),
+            columns=["Model", "Score"]
+        ).sort_values("Score", ascending=False)
 
-                csv = leaderboard.to_csv(index=False)
+        st.dataframe(results_df, use_container_width=True)
+        st.bar_chart(results_df.set_index("Model"))
 
-                st.download_button(
-                    label="📥 Download Leaderboard",
-                    data=csv,
-                    file_name="model_leaderboard.csv",
-                    mime="text/csv"
-                )
+        st.success(f"🏆 Best Model: **{best_model_name}**")
+
+        metric_label = "Accuracy" if st.session_state["automl_problem"] == "Classification" else "R² Score"
+        st.info(f"⭐ {metric_label}: **{best_score:.4f}**")
+
+        st.success("✅ Model saved to session — go to 🔮 Predict Data to use it.")
 
 
 # =========================
@@ -518,49 +639,60 @@ elif page == "⚙ Auto ML":
 # =========================
 elif page == "🔮 Predict Data":
 
+    st.subheader("🔮 Predict New Data")
+
     if "best_model" not in st.session_state:
-        st.warning("⚠ Please train a model first in Auto ML page")
+        st.warning("⚠ Please train a model first in the 🚀 Auto ML page.")
         st.stop()
 
     if "feature_columns" not in st.session_state:
-        st.warning("⚠ Feature columns not found. Please retrain model.")
+        st.warning("⚠ Feature columns not found. Please retrain the model.")
         st.stop()
 
-    model = st.session_state["best_model"]
+    model        = st.session_state["best_model"]
     feature_cols = st.session_state["feature_columns"]
 
+    if "best_model_name" in st.session_state:
+        st.info(f"🏆 Active Model: **{st.session_state['best_model_name']}**")
+
+    st.write(f"📌 Features Required: **{len(feature_cols)}** → {feature_cols}")
+
     predict_file = st.file_uploader(
-        "Upload file for prediction",
+        "📁 Upload File for Prediction",
         type=["csv", "xlsx", "xls"]
     )
 
     if predict_file is not None:
 
         try:
-            file_name = predict_file.name.lower()
+            fname = predict_file.name.lower()
 
-            if file_name.endswith(".csv"):
+            if fname.endswith(".csv"):
                 try:
                     new_df = pd.read_csv(predict_file, encoding="utf-8")
                 except Exception:
                     predict_file.seek(0)
                     new_df = pd.read_csv(predict_file, encoding="latin1")
-
-            elif file_name.endswith((".xlsx", ".xls")):
+            elif fname.endswith((".xlsx", ".xls")):
                 new_df = pd.read_excel(predict_file)
-
             else:
                 st.error("❌ Unsupported file format")
                 st.stop()
 
-            st.subheader("📄 Input Data Preview")
+            col1, col2 = st.columns(2)
+            col1.metric("Rows", new_df.shape[0])
+            col2.metric("Columns", new_df.shape[1])
+
             st.dataframe(new_df.head())
 
-            X_new = new_df.reindex(columns=feature_cols)
-            X_new = X_new.fillna(0)
-            X_new = X_new.select_dtypes(include=["number"])
+            missing_cols = [c for c in feature_cols if c not in new_df.columns]
+            if missing_cols:
+                st.warning(f"⚠ Missing feature columns: {missing_cols} — they will be filled with 0.")
 
             if st.button("🚀 Predict"):
+
+                X_new = new_df.reindex(columns=feature_cols).fillna(0)
+                X_new = X_new.select_dtypes(include=["number"])
 
                 predictions = model.predict(X_new)
 
@@ -571,14 +703,20 @@ elif page == "🔮 Predict Data":
                 st.dataframe(result_df)
 
                 st.subheader("📈 Prediction Summary")
-                st.write(result_df["Prediction"].value_counts())
+                summary_series = result_df["Prediction"].value_counts()
+                st.write(summary_series)
+
+                st.subheader("📉 Prediction Distribution")
+                st.bar_chart(summary_series)
 
                 st.download_button(
-                    "⬇ Download Predictions",
-                    result_df.to_csv(index=False),
+                    label="⬇ Download Predictions",
+                    data=result_df.to_csv(index=False),
                     file_name="predictions.csv",
                     mime="text/csv"
                 )
+
+                st.success("✅ Prediction completed successfully!")
 
         except Exception as e:
             st.error(f"❌ Error during prediction: {e}")
@@ -591,13 +729,13 @@ elif page == "📄 Reports":
 
     st.subheader("📄 Generate Report")
 
-    missing = df.isnull().sum().sum()
+    missing    = df.isnull().sum().sum()
     duplicates = df.duplicated().sum()
 
-    target = suggest_target_column(df)
+    target     = suggest_target_column(df)
     model_name = suggest_model(df, target)
-    problem = detect_problem_type(df, target)
-    score = data_quality_score(df)
+    problem    = detect_problem_type(df, target)
+    score      = data_quality_score(df)
 
     report_text = f"""
 AI Data Scientist Copilot — Report
@@ -631,18 +769,16 @@ Column Info
         mime="text/plain"
     )
 
-    report_df = pd.DataFrame(
-        {
-            "Metric": [
-                "Rows", "Columns", "Missing Values", "Duplicate Rows",
-                "Target Column", "Suggested Model", "Problem Type", "Quality Score"
-            ],
-            "Value": [
-                df.shape[0], df.shape[1], missing, duplicates,
-                target, model_name, problem, score
-            ]
-        }
-    )
+    report_df = pd.DataFrame({
+        "Metric": [
+            "Rows", "Columns", "Missing Values", "Duplicate Rows",
+            "Target Column", "Suggested Model", "Problem Type", "Quality Score"
+        ],
+        "Value": [
+            df.shape[0], df.shape[1], missing, duplicates,
+            target, model_name, problem, score
+        ]
+    })
 
     csv_report = report_df.to_csv(index=False).encode("utf-8")
 
@@ -652,3 +788,42 @@ Column Info
         file_name="ai_report.csv",
         mime="text/csv"
     )
+
+    # PDF Report — only if a model has been trained via Auto ML
+    if "best_model_name" in st.session_state and "automl_score" in st.session_state:
+
+        st.divider()
+        st.subheader("📑 Generate PDF Report")
+
+        if st.button("📄 Generate PDF"):
+
+            try:
+                summary_data = {
+                    "rows":    df.shape[0],
+                    "columns": df.shape[1]
+                }
+
+                pdf_file = generate_report(
+                    summary        = summary_data,
+                    target         = st.session_state.get("automl_target", target),
+                    problem        = st.session_state.get("automl_problem", problem),
+                    best_model     = st.session_state["best_model_name"],
+                    best_score     = st.session_state["automl_score"],
+                    feature_count  = len(st.session_state.get("feature_columns", [])),
+                    missing_values = int(missing)
+                )
+
+                with open(pdf_file, "rb") as f:
+                    st.download_button(
+                        label="⬇ Download PDF Report",
+                        data=f,
+                        file_name="ai_report.pdf",
+                        mime="application/pdf"
+                    )
+
+                st.success("✅ PDF Report generated!")
+
+            except Exception as e:
+                st.error(f"❌ PDF generation failed: {e}")
+    else:
+        st.info("💡 Train a model in 🚀 Auto ML first to enable PDF report generation.")
