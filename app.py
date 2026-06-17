@@ -48,6 +48,13 @@ from utils.evaluation import (
     show_confusion_matrix,
     show_classification_report
 )
+from utils.copilot import (
+   dataset_summary, suggest_target_column, detect_problem_type,
+   suggest_model, generate_insights, next_action_plan,
+   data_quality_score, smart_chat,
+   eda_analysis, cleaning_report, ml_recommendations,
+   visualization_recommendations,
+  )
 
 st.set_page_config(
     page_title="AI Data Scientist Copilot",
@@ -406,151 +413,232 @@ elif page == "📈 Machine Learning":
 # 🤖 COPILOT
 # =========================
 elif page == "🤖 Copilot":
-
-    summary = dataset_summary(df)
-    target  = suggest_target_column(df)
-    problem = detect_problem_type(df, target)
-    score   = data_quality_score(df)
-    model   = suggest_model(df, target)
+ 
+    summary  = dataset_summary(df)
+    target   = suggest_target_column(df)
+    problem  = detect_problem_type(df, target)
+    score    = data_quality_score(df)
+    model    = suggest_model(df, target)
     insights = generate_insights(df)
     actions  = next_action_plan(df, target)
-
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Rows", summary["rows"])
-    col2.metric("Columns", summary["columns"])
-    col3.metric("Missing", summary["missing_values"])
-
+ 
+    # ── Top metrics ───────────────────────────────────────────────────────────
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Rows",          summary["rows"])
+    col2.metric("Columns",       summary["columns"])
+    col3.metric("Missing",       summary["missing_values"])
+    col4.metric("Quality Score", f"{score}/100")
+ 
     st.divider()
-
-    st.subheader("🤖 Recommendations")
-    st.success(f"Suggested Target: {target}")
-    st.info(f"Suggested Model: {model}")
-
-    st.subheader("🧠 AI Problem Detection")
-    st.info(f"Detected Problem Type: {problem}")
-
-    st.subheader("📊 AI Data Quality Score")
-    st.metric("Score", f"{score}/100")
-    st.progress(int(score))
-
-    st.subheader("🎯 Dataset Recommendation")
-
+ 
+    # ── AI Recommendations ────────────────────────────────────────────────────
+    st.subheader("🤖 AI Recommendations")
+    r1, r2, r3 = st.columns(3)
+    r1.success(f"**Target Column:** {target}")
+    r2.info(f"**Suggested Model:** {model}")
+    r3.info(f"**Problem Type:** {problem}")
+ 
+    # ── Dataset Readiness ─────────────────────────────────────────────────────
+    st.subheader("🎯 Dataset Readiness")
     if df.shape[0] < 100:
-        st.warning("Small dataset detected. More data may improve model performance.")
+        st.warning("⚠️ Small dataset — more data may significantly improve model performance.")
     elif df.shape[0] < 1000:
-        st.info("Medium-sized dataset. Suitable for most machine learning algorithms.")
+        st.info("ℹ️ Medium-sized dataset. Suitable for most ML algorithms.")
     else:
-        st.success("Large dataset. Excellent for advanced machine learning models.")
-
-    st.subheader("📋 Dataset Quality Report")
-
-    missing    = df.isnull().sum().sum()
-    duplicates = df.duplicated().sum()
-
-    if missing == 0:
-        st.success("No missing values detected.")
-    else:
-        st.warning(f"{missing} missing values detected.")
-
-    if duplicates == 0:
-        st.success("No duplicate rows detected.")
-    else:
-        st.warning(f"{duplicates} duplicate rows detected.")
-
-    report_txt = f"""
-Dataset Summary
-
-Rows             : {df.shape[0]}
-Columns          : {df.shape[1]}
-Missing Values   : {missing}
-Duplicate Rows   : {duplicates}
-
-Suggested Target : {target}
-Suggested Model  : {model}
-Problem Type     : {problem}
-Quality Score    : {score}/100
-"""
-
-    st.download_button(
-        label="📥 Download Summary Report",
-        data=report_txt,
-        file_name="dataset_report.txt",
-        mime="text/plain"
-    )
-
-    report_df = pd.DataFrame({
-        "Metric": [
-            "Rows", "Columns", "Missing Values", "Duplicate Rows",
-            "Target Column", "Suggested Model", "Problem Type", "Quality Score"
-        ],
-        "Value": [
-            df.shape[0], df.shape[1], missing, duplicates,
-            target, model, problem, score
-        ]
-    })
-
-    csv_report = report_df.to_csv(index=False).encode("utf-8")
-
-    st.download_button(
-        label="📊 Download Detailed Report",
-        data=csv_report,
-        file_name="ai_copilot_report.csv",
-        mime="text/csv"
-    )
-
+        st.success("✅ Large dataset. Excellent for advanced machine learning models.")
+ 
+    # ── Quality Report ────────────────────────────────────────────────────────
+    st.subheader("📋 Data Quality Report")
+    st.progress(int(score), text=f"Quality Score: {score}/100")
+ 
+    missing    = int(df.isnull().sum().sum())
+    duplicates = int(df.duplicated().sum())
+ 
+    qc1, qc2 = st.columns(2)
+    with qc1:
+        if missing == 0:
+            st.success("✅ No missing values")
+        else:
+            st.warning(f"⚠️ {missing} missing values detected")
+            with st.expander("Missing values by column"):
+                mv = df.isnull().sum()
+                st.dataframe(
+                    mv[mv > 0].reset_index().rename(columns={"index": "Column", 0: "Count"})
+                )
+    with qc2:
+        if duplicates == 0:
+            st.success("✅ No duplicate rows")
+        else:
+            st.warning(f"⚠️ {duplicates} duplicate rows detected")
+ 
     st.divider()
-
+ 
+    # ── Four quick-access panels ──────────────────────────────────────────────
+    st.subheader("🔍 Quick Analysis Panels")
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 EDA", "🧹 Cleaning", "🤖 ML", "📈 Visualizations"])
+ 
+    def render_lines(lines):
+        """Render a list of answer lines cleanly with proper code blocks."""
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            if line.strip().startswith("```"):
+                # collect full code block
+                lang  = line.strip().replace("```", "").strip() or "python"
+                code  = []
+                i    += 1
+                while i < len(lines) and not lines[i].strip().startswith("```"):
+                    code.append(lines[i])
+                    i += 1
+                st.code("\n".join(code), language=lang)
+            elif line.startswith("✅"):
+                st.success(line)
+            elif line.startswith("⚠️"):
+                st.warning(line)
+            elif line.startswith("---"):
+                st.markdown(f"**{line}**")
+            else:
+                st.markdown(line)
+            i += 1
+ 
+    with tab1:
+        render_lines(eda_analysis(df))
+ 
+    with tab2:
+        render_lines(cleaning_report(df))
+ 
+    with tab3:
+        render_lines(ml_recommendations(df, target))
+ 
+    with tab4:
+        render_lines(visualization_recommendations(df, target))
+ 
+    st.divider()
+ 
+    # ── Smart Insights ────────────────────────────────────────────────────────
     st.subheader("💡 Smart Insights")
     for insight in insights:
-        st.success(str(insight))
-
+        st.success(f"• {insight}")
+ 
     st.divider()
-
+ 
+    # ── Action Plan ───────────────────────────────────────────────────────────
     st.subheader("🚀 Action Plan")
-    for action in actions:
-        st.warning(action)
-
+    for i, action in enumerate(actions, 1):
+        st.warning(f"**Step {i}:** {action}")
+ 
     st.divider()
-
+ 
+    # ── Download Reports ──────────────────────────────────────────────────────
+    st.subheader("📥 Export Reports")
+ 
+    report_txt = (
+        "Dataset Summary\n===============\n"
+        f"Rows             : {df.shape[0]}\n"
+        f"Columns          : {df.shape[1]}\n"
+        f"Missing Values   : {missing}\n"
+        f"Duplicate Rows   : {duplicates}\n\n"
+        "AI Analysis\n===========\n"
+        f"Suggested Target : {target}\n"
+        f"Suggested Model  : {model}\n"
+        f"Problem Type     : {problem}\n"
+        f"Quality Score    : {score}/100\n\n"
+        "Key Insights\n============\n"
+        + "\n".join(f"- {x}" for x in insights)
+        + "\n\nAction Plan\n===========\n"
+        + "\n".join(f"- {a}" for a in actions)
+    )
+ 
+    report_df = pd.DataFrame({
+        "Metric": ["Rows","Columns","Missing Values","Duplicate Rows",
+                   "Target Column","Suggested Model","Problem Type","Quality Score"],
+        "Value":  [df.shape[0], df.shape[1], missing, duplicates,
+                   target, model, problem, score],
+    })
+ 
+    dl1, dl2 = st.columns(2)
+    with dl1:
+        st.download_button(
+            label="📄 Download Text Report",
+            data=report_txt,
+            file_name="dataset_report.txt",
+            mime="text/plain",
+        )
+    with dl2:
+        st.download_button(
+            label="📊 Download CSV Report",
+            data=report_df.to_csv(index=False).encode("utf-8"),
+            file_name="ai_copilot_report.csv",
+            mime="text/csv",
+        )
+ 
+    st.divider()
+ 
+    # ── Smart Chat ────────────────────────────────────────────────────────────
     st.subheader("💬 Ask Your Dataset")
-
+    st.caption("Ask anything — EDA, cleaning, ML, visualizations, column names, stats. No API needed.")
+ 
     if "chat_history" not in st.session_state:
         st.session_state["chat_history"] = []
-
-    question = st.text_input("Ask a question about your dataset")
-
+ 
+    # Quick question buttons
+    quick_questions = [
+        "Show EDA analysis",
+        "What cleaning steps do I need?",
+        "Give me ML recommendations",
+        "What visualizations should I create?",
+        "What are the key insights?",
+        "What are my next steps?",
+        "Show missing values",
+        "Show data types",
+        "What is the target column?",
+        "Show outliers",
+        "Show correlations",
+        "What is the quality score?",
+    ]
+ 
+    st.markdown("**Quick questions:**")
+    qb_cols = st.columns(4)
+    for idx, qq in enumerate(quick_questions):
+        if qb_cols[idx % 4].button(qq, key=f"quick_{idx}"):
+            answer_lines = smart_chat(qq, df)
+            st.session_state["chat_history"].append({"role": "user",      "content": qq,                        "lines": None})
+            st.session_state["chat_history"].append({"role": "assistant", "content": "\n".join(answer_lines),  "lines": answer_lines})
+            st.rerun()
+ 
+    st.markdown("---")
+ 
+    # Render existing chat history
+    for msg in st.session_state["chat_history"]:
+        with st.chat_message(msg["role"]):
+            if msg["role"] == "assistant" and msg.get("lines"):
+                render_lines(msg["lines"])
+            else:
+                st.markdown(msg["content"])
+ 
+    # Chat input
+    question = st.chat_input("Ask anything about your dataset...")
+ 
     if question:
-        q = question.lower()
+        answer_lines = smart_chat(question, df)
+        st.session_state["chat_history"].append({"role": "user",      "content": question,                    "lines": None})
+        st.session_state["chat_history"].append({"role": "assistant", "content": "\n".join(answer_lines),    "lines": answer_lines})
+        with st.chat_message("user"):
+            st.markdown(question)
+        with st.chat_message("assistant"):
+            render_lines(answer_lines)
+ 
+    # Clear chat
+    if st.session_state["chat_history"]:
+        if st.button("🗑️ Clear chat history"):
+            st.session_state["chat_history"] = []
+            st.rerun()
 
-        if "row" in q:
-            answer = f"Dataset contains {df.shape[0]} rows."
-        elif "column" in q:
-            answer = f"Dataset contains {df.shape[1]} columns."
-        elif "missing" in q:
-            answer = f"Missing values: {df.isnull().sum().sum()}"
-        elif "duplicate" in q:
-            answer = f"Duplicate rows: {df.duplicated().sum()}"
-        elif "target" in q:
-            answer = f"Suggested target: {target}"
-        elif "model" in q:
-            answer = f"Suggested model: {model}"
-        elif "score" in q or "quality" in q:
-            answer = f"Data quality score: {score}/100"
-        elif "problem" in q or "type" in q:
-            answer = f"Problem type: {problem}"
-        else:
-            answer = "Try asking about: rows, columns, missing values, duplicates, target column, model, or quality score."
 
-        st.session_state["chat_history"].append((question, answer))
-
-    st.markdown("### Chat History")
-    for q, a in reversed(st.session_state["chat_history"][-10:]):
-        st.markdown(f"**You:** {q}")
-        st.success(a)
 
 
 # =========================
-# 🚀 AUTO ML              ← FIX: emoji was "⚙ Auto ML" before — now matches sidebar
+# 🚀 AUTO ML              
 # =========================
 elif page == "🚀 Auto ML":
 
